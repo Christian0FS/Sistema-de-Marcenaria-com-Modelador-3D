@@ -1,0 +1,17 @@
+import { ViewRect } from '../../types';
+interface Rect extends Pick<ViewRect, 'top' | 'left' | 'right' | 'bottom'> {
+}
+export declare function getScrollDirectionAndSpeed(scrollContainer: Element, scrollContainerRect: ViewRect, { top, left, right, bottom }: Rect, acceleration?: number, thresholdPercentage?: {
+    x: number;
+    y: number;
+}): {
+    direction: {
+        x: number;
+        y: number;
+    };
+    speed: {
+        x: number;
+        y: number;
+    };
+};
+export {};

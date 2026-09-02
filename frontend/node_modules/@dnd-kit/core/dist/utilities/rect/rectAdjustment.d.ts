@@ -1,0 +1,3 @@
+import type { Coordinates, ViewRect } from '../../types';
+export declare function createRectAdjustmentFn(modifier: number): (viewRect: ViewRect, ...adjustments: Coordinates[]) => ViewRect;
+export declare const getAdjustedRect: (viewRect: ViewRect, ...adjustments: Coordinates[]) => ViewRect;

@@ -1,0 +1,3 @@
+/// <reference types="react" />
+import type { DndContextDescriptor } from './types';
+export declare const Context: import("react").Context<DndContextDescriptor>;

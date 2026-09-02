@@ -1,0 +1,2 @@
+/// <reference types="react" />
+export declare function useNodeRef(): readonly [import("react").MutableRefObject<HTMLElement | null>, (element: HTMLElement | null) => void];

@@ -1,0 +1,16 @@
+/// <reference types="react" />
+import { Data } from '../store';
+import type { LayoutRect } from '../types';
+export interface UseDroppableArguments {
+    id: string;
+    disabled?: boolean;
+    data?: Data;
+}
+export declare function useDroppable({ data, disabled, id, }: UseDroppableArguments): {
+    active: import("../store").Active | null;
+    rect: import("react").MutableRefObject<LayoutRect | null>;
+    isOver: boolean;
+    node: import("react").MutableRefObject<HTMLElement | null>;
+    over: import("../store").Over | null;
+    setNodeRef: (element: HTMLElement | null) => void;
+};
