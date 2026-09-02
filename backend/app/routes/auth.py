@@ -69,6 +69,6 @@ def get_current_user(
     """Dependency para proteger rotas: valida o token e retorna o id do usuário."""
     try:
         usuario_id = decodificar_token(credenciais.credentials)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+    except JWTError as exc:
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado") from exc
     return usuario_id
