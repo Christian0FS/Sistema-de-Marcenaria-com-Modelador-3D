@@ -35,8 +35,8 @@ def _row_to_dict(row):
     }
 
 
-@router.post("", status_code=201)
-def criar_projeto(dados: ProjetoInput, usuario_id: str = Depends(get_current_user)):
+@router.post("", status_code=201, dependencies=[Depends(get_current_user)])
+def criar_projeto(dados: ProjetoInput):
     client = get_client()
 
     cliente_existe = client.execute("SELECT id FROM clientes WHERE id = ?", [dados.cliente_id])
@@ -58,8 +58,8 @@ def criar_projeto(dados: ProjetoInput, usuario_id: str = Depends(get_current_use
     }
 
 
-@router.get("")
-def listar_projetos(status: Optional[str] = None, usuario_id: str = Depends(get_current_user)):
+@router.get("", dependencies=[Depends(get_current_user)])
+def listar_projetos(status: Optional[str] = None):
     client = get_client()
 
     if status:
@@ -77,8 +77,8 @@ def listar_projetos(status: Optional[str] = None, usuario_id: str = Depends(get_
     return [_row_to_dict(row) for row in resultado.rows]
 
 
-@router.get("/{projeto_id}")
-def buscar_projeto(projeto_id: str, usuario_id: str = Depends(get_current_user)):
+@router.get("/{projeto_id}", dependencies=[Depends(get_current_user)])
+def buscar_projeto(projeto_id: str):
     client = get_client()
     resultado = client.execute(
         "SELECT id, cliente_id, nome, status, modulos_json, criado_em FROM projetos WHERE id = ?",
@@ -89,8 +89,8 @@ def buscar_projeto(projeto_id: str, usuario_id: str = Depends(get_current_user))
     return _row_to_dict(resultado.rows[0])
 
 
-@router.patch("/{projeto_id}")
-def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate, usuario_id: str = Depends(get_current_user)):
+@router.patch("/{projeto_id}", dependencies=[Depends(get_current_user)])
+def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate):
     client = get_client()
 
     existe = client.execute("SELECT id FROM projetos WHERE id = ?", [projeto_id])
@@ -112,8 +112,8 @@ def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate, usuario_id: str = D
     return {"id": projeto_id, **campos}
 
 
-@router.delete("/{projeto_id}", status_code=204)
-def deletar_projeto(projeto_id: str, usuario_id: str = Depends(get_current_user)):
+@router.delete("/{projeto_id}", status_code=204, dependencies=[Depends(get_current_user)])
+def deletar_projeto(projeto_id: str):
     client = get_client()
     existe = client.execute("SELECT id FROM projetos WHERE id = ?", [projeto_id])
     if not existe.rows:
@@ -121,3 +121,71 @@ def deletar_projeto(projeto_id: str, usuario_id: str = Depends(get_current_user)
 
     client.execute("DELETE FROM projetos WHERE id = ?", [projeto_id])
     return None
+
+class ModuloInput(BaseModel):
+    nome: str
+    dimensoes: dict
+    estrutura: dict = {"divisões": [], "internos": [], "portas": []}
+    aparencia: dict = {}
+
+
+def _carregar_modulos(client, projeto_id: str):
+    resultado = client.execute(
+        "SELECT modulos_json FROM projetos WHERE id = ?", [projeto_id]
+    )
+    if not resultado.rows:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return json.loads(resultado.rows[0][0]) if resultado.rows[0][0] else []
+
+def _salvar_modulos(client, projeto_id: str, modulos: list):
+    client.execute(
+        "UPDATE projetos SET modulos_json = ? WHERE id = ?",
+        [json.dumps(modulos), projeto_id],
+    )
+
+@router.post("/{projeto_id}/modulos", status_code=201, dependencies=[Depends(get_current_user)])
+def adicionar_modulo(projeto_id: str, dados: ModuloInput):
+    client = get_client()
+    modulos = _carregar_modulos(client, projeto_id)
+
+    novo_modulo = {"modulo_id": str(uuid.uuid4()), **dados.model_dump()}
+    modulos.append(novo_modulo)
+
+    _salvar_modulos(client, projeto_id, modulos)
+    return novo_modulo
+
+@router.get("/{projeto_id}/modulos/{modulo_id}", dependencies=[Depends(get_current_user)])
+def buscar_modulo(projeto_id: str, modulo_id: str):
+    client = get_client()
+    modulos = _carregar_modulos(client, projeto_id)
+
+    modulo = next((m for m in modulos if m["modulo_id"] == modulo_id), None)
+    if not modulo:
+        raise HTTPException(status_code=404, detail="Módulo não encontrado")
+    return modulo
+
+@router.patch("/{projeto_id}/modulos/{modulo_id}", dependencies=[Depends(get_current_user)])
+def atualizar_modulo(projeto_id: str, modulo_id: str, dados: ModuloInput):
+    client = get_client()
+    modulos = _carregar_modulos(client, projeto_id)
+
+    indice = next((i for i, m in enumerate(modulos) if m["modulo_id"] == modulo_id), None)
+    if indice is None:
+        raise HTTPException(status_code=404, detail="Módulo não encontrado")
+
+    modulos[indice] = {"modulo_id": modulo_id, **dados.model_dump()}
+    _salvar_modulos(client, projeto_id, modulos)
+    return modulos[indice]
+
+@router.delete("/{projeto_id}/modulos/{modulo_id}", status_code=204, dependencies=[Depends(get_current_user)])
+def deletar_modulo(projeto_id: str, modulo_id: str):
+    client = get_client()
+    modulos = _carregar_modulos(client, projeto_id)
+
+    novos_modulos = [m for m in modulos if m["modulo_id"] != modulo_id]
+    if len(novos_modulos) == len(modulos):
+        raise HTTPException(status_code=404, detail="Módulo não encontrado")
+
+    _salvar_modulos(client, projeto_id, novos_modulos)
+    return None
+

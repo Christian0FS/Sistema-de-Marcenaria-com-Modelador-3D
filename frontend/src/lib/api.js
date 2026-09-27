@@ -2,16 +2,23 @@ const API_URL = "http://127.0.0.1:8000";
 
 function getToken() {
     return localStorage.getItem("token");
+
 }
 
 async function request(path, options = {}) {
+    const token = getToken();
+    const headers = {
+        "Content-Type": "application/json",
+        ...options.headers,
+    };
+
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${API_URL}${path}`, {
         ...options,
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-            ...options.headers,
-        },
+        headers,
     });
 
     if (!res.ok) {
@@ -30,4 +37,18 @@ export const api = {
             method: "PATCH",
             body: JSON.stringify({ status }),
         }),
+
+    criarModulo: (projetoId, modulo) =>
+        request(`/projetos/${projetoId}/modulos`, {
+            method: "POST",
+            body: JSON.stringify(modulo),
+        }),
+    buscarModulo: (projetoId, moduloId) =>
+        request(`/projetos/${projetoId}/modulos/${moduloId}`),
+    atualizarModulo: (projetoId, moduloId, modulo) =>
+        request(`/projetos/${projetoId}/modulos/${moduloId}`, {
+            method: "PATCH",
+            body: JSON.stringify(modulo),
+        }),
 };
+
