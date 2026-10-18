@@ -41,7 +41,13 @@ def register(dados: RegisterInput):
         [usuario_id, dados.nome, dados.email, senha_hash],
     )
 
-    return {"id": usuario_id, "nome": dados.nome, "email": dados.email}
+    return {
+        "id": usuario_id,
+        "nome": dados.nome,
+        "email": dados.email,
+        "access_token": criar_token(usuario_id),
+        "token_type": "bearer",
+    }
 
 
 @router.post("/login")

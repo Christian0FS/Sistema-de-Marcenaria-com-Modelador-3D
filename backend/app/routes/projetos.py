@@ -125,7 +125,7 @@ def deletar_projeto(projeto_id: str):
 class ModuloInput(BaseModel):
     nome: str
     dimensoes: dict
-    estrutura: dict = {"divisões": [], "internos": [], "portas": []}
+    estrutura: dict = {"divisoes": [], "internos": [], "portas": []}
     aparencia: dict = {}
 
 
@@ -189,3 +189,46 @@ def deletar_modulo(projeto_id: str, modulo_id: str):
     _salvar_modulos(client, projeto_id, novos_modulos)
     return None
 
+@router.post("/{projeto_id}/modulos/{modulo_id}/calcular-ferragens", dependencies=[Depends(get_current_user)])
+def calcular_ferragens_modulo(projeto_id: str, modulo_id: str):
+    """
+    Recebe o tipoFerragem necessário de cada peça (calculado no frontend)
+    e tenta auto-vincular com o primeiro item compatível do cadastro de
+    ferragens do usuário. Se não achar correspondência, deixa ferragemId
+    como null para o usuário escolher manualmente depois.
+    """
+    client = get_client()
+    modulos = _carregar_modulos(client, projeto_id)
+
+    modulo = next((m for m in modulos if m["modulo_id"] == modulo_id), None)
+    if not modulo:
+        raise HTTPException(status_code=404, detail="Módulo não encontrado")
+
+    # busca ferragens cadastradas, agrupadas por tipo
+    ferragens_cadastradas = client.execute(
+        "SELECT id, tipo, nome FROM ferragens"
+    ).rows
+
+    def achar_ferragem_por_tipo(tipo_ferragem):
+        correspondente = next(
+            (f for f in ferragens_cadastradas if f[1] == tipo_ferragem), None
+        )
+        return correspondente[0] if correspondente else None
+
+    # aplica a correspondência em cada porta
+    for porta in modulo["estrutura"].get("portas", []):
+        for necessidade in porta.get("ferragens", []):
+            necessidade["ferragemId"] = necessidade.get("ferragemId") or achar_ferragem_por_tipo(
+                necessidade.get("tipoFerragem")
+            )
+
+    # aplica a correspondência em cada gaveteiro (dentro de internos)
+    for interno in modulo["estrutura"].get("internos", []):
+        if interno.get("tipo") == "gaveteiro":
+            for necessidade in interno.get("ferragens", []):
+                necessidade["ferragemId"] = necessidade.get("ferragemId") or achar_ferragem_por_tipo(
+                    necessidade.get("tipoFerragem")
+                )
+
+    _salvar_modulos(client, projeto_id, modulos)
+    return modulo

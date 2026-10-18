@@ -9,6 +9,7 @@ import {
 } from "@dnd-kit/core";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { Link, useHistory } from "react-router-dom";
 import { api } from "../lib/api";
 
 const COLUNAS = [
@@ -19,26 +20,55 @@ const COLUNAS = [
 ];
 
 function CardProjeto({ projeto }) {
-    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
     id: projeto.id,
   });
+  const destino = `/projetos/${projeto.id}`;
+  const style = transform
+    ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
+    : undefined;
 
-  const style = transform 
-    ? {
-        transform: `translate(${transform.x}px, ${transform.y}px)`,
-        opacity: isDragging ? 0.4 : 1,
-    } : undefined;
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      className={`bg-white rounded-lg shadow p-3 mb-2 border border-gray-200 ${isDragging ? "opacity-40" : ""}`}
+    >
+      <Link to={destino} className="block rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <p className="font-medium text-gray-800">{projeto.nome}</p>
+        <p className="text-xs text-gray-500 mt-1">{projeto.modulos?.length || 0} móvel(is)</p>
+        <span className="inline-block mt-3 text-sm font-medium text-blue-700 hover:text-blue-900">
+          Abrir projeto <span aria-hidden="true">&rarr;</span>
+        </span>
+      </Link>
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`Mover projeto ${projeto.nome}`}
+        title="Arraste para mudar de etapa"
+        className="mt-2 rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 cursor-grab active:cursor-grabbing"
+      >
+        Mover
+      </button>
+    </article>
+  );
+}
 
-    return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-white rounded-lg shadow p-3 mb-2 cursor-grab active:cursor-grabbing border border-gray-200">
-            <p className="font-medium text-gray-800">{projeto.nome}</p>
-            <p className="text-xs text-gray-500 mt-1">{projeto.modulos?.length || 0} móvel(is)</p>
-        </div>
-    );
+function CardProjetoOverlay({ projeto }) {
+  return (
+    <article className="bg-white rounded-lg shadow p-3 mb-2 border border-gray-200">
+      <Link to={`/projetos/${projeto.id}`} className="block rounded">
+        <p className="font-medium text-gray-800">{projeto.nome}</p>
+        <p className="text-xs text-gray-500 mt-1">{projeto.modulos?.length || 0} móvel(is)</p>
+      </Link>
+    </article>
+  );
 }
 
 function Coluna({ coluna, projetos }) {
-    const { setNodeRef, isOver } = useDroppable({id: coluna.id});
+  const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
 
     return (
     <div
@@ -63,12 +93,15 @@ function Coluna({ coluna, projetos }) {
 }
 
 export default function Kanban(){
+  const history = useHistory();
     const [projetos, setProjetos] = useState([]);
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState(null);
     const [ativoId, setAtivoId] = useState(null);
 
-    const sensors = useSensors(useSensor (PointerSensor));
+    const sensors = useSensors(
+      useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    );
     
     useEffect(() => {
         carregarProjetos();
@@ -89,6 +122,10 @@ export default function Kanban(){
 
     function handleDragStart(event) {
         setAtivoId(event.active.id);
+    }
+
+    function handleDragCancel() {
+      setAtivoId(null);
     }
 
     async function handleDragEnd(event) {
@@ -118,7 +155,22 @@ export default function Kanban(){
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Kanban de Projetos</h1>
+      <header className="mb-4 flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold">Kanban de Projetos</h1>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem("token");
+              localStorage.removeItem("nomeUsuario");
+              history.replace("/login");
+            }}
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            Sair
+          </button>
+        </div>
+      </header>
       {erro && (
         <div className="bg-red-100 text-red-700 rounded p-2 mb-3 text-sm">{erro}</div>
       )}
@@ -127,6 +179,7 @@ export default function Kanban(){
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
         <div className="flex gap-4 overflow-x-auto">
           {COLUNAS.map((coluna) => (
@@ -138,7 +191,7 @@ export default function Kanban(){
           ))}
         </div>
         <DragOverlay>
-          {projetoAtivo ? <CardProjeto projeto={projetoAtivo} /> : null}
+          {projetoAtivo ? <CardProjetoOverlay projeto={projetoAtivo} /> : null}
         </DragOverlay>
       </DndContext>
     </div>

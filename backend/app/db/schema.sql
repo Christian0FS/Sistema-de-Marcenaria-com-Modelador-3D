@@ -1,4 +1,4 @@
-CREATE TABLE usuarios (
+CREATE TABLE IF NOT EXISTS usuarios (
   id TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
@@ -6,7 +6,7 @@ CREATE TABLE usuarios (
   criado_em TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE clientes (
+CREATE TABLE IF NOT EXISTS clientes (
   id TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
   telefone TEXT,
@@ -15,7 +15,7 @@ CREATE TABLE clientes (
   criado_em TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE projetos (
+CREATE TABLE IF NOT EXISTS projetos (
   id TEXT PRIMARY KEY,
   cliente_id TEXT REFERENCES clientes(id),
   nome TEXT NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE projetos (
   criado_em TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE chapas_mdf (
+CREATE TABLE IF NOT EXISTS chapas_mdf (
   id TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
   espessura_mm REAL NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE chapas_mdf (
   estoque_chapas INTEGER DEFAULT 0
 );
 
-CREATE TABLE fitas_borda (
+CREATE TABLE IF NOT EXISTS fitas_borda (
   id TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
   cor TEXT,
@@ -42,10 +42,21 @@ CREATE TABLE fitas_borda (
   estoque_metros REAL DEFAULT 0
 );
 
-CREATE TABLE ferragens (
+CREATE TABLE IF NOT EXISTS ferragens (
   id TEXT PRIMARY KEY,
   tipo TEXT NOT NULL,
   nome TEXT NOT NULL,
   preco_unitario REAL NOT NULL,
   estoque INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS biblioteca_modulos (
+  id TEXT PRIMARY KEY,
+  usuario_id TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  categoria TEXT,
+  estrutura_json TEXT NOT NULL,
+  thumbnail_base64 TEXT,
+  criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 );
