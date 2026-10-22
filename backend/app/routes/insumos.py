@@ -20,6 +20,7 @@ class ChapaInput(BaseModel):
     altura_mm: float
     preco_m2: float
     estoque_chapas: int = 0  # Estoque inicial de chapas
+    cor: Optional[str] = None  # cor de acabamento da chapa (o veio é derivado no 3D)
 
 class ChapaUpdateInput(BaseModel):
     nome: Optional[str] = None
@@ -28,6 +29,7 @@ class ChapaUpdateInput(BaseModel):
     altura_mm: Optional[float] = None
     preco_m2: Optional[float] = None
     estoque_chapas: Optional[int] = None  # Estoque de chapas
+    cor: Optional[str] = None
 
 def _chapa_to_dict(row):
     return {
@@ -38,6 +40,7 @@ def _chapa_to_dict(row):
         "altura_mm": row[4],
         "preco_m2": row[5],
         "estoque_chapas": row[6],
+        "cor": row[7] if len(row) > 7 else None,
     }
 
 @router.post("/chapas", status_code=201)
@@ -45,16 +48,17 @@ def criar_chapa(dados: ChapaInput, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     chapa_id = str(uuid.uuid4())
     client.execute(
-        "INSERT INTO chapas_mdf (id, nome, espessura_mm, largura_mm, altura_mm, preco_m2, estoque_chapas) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [chapa_id, dados.nome, dados.espessura_mm, dados.largura_mm, dados.altura_mm, dados.preco_m2, dados.estoque_chapas],
+        "INSERT INTO chapas_mdf (id, usuario_id, nome, espessura_mm, largura_mm, altura_mm, preco_m2, estoque_chapas, cor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [chapa_id, usuario_id, dados.nome, dados.espessura_mm, dados.largura_mm, dados.altura_mm, dados.preco_m2, dados.estoque_chapas, dados.cor],
     )
-    return {"id": chapa_id, **dados.dict()}
+    return {"id": chapa_id, **dados.model_dump()}
 
 @router.get("/chapas")
 def listar_chapas(usuario_id: str = Depends(get_current_user)):
     client = get_client()
     result = client.execute(
-        "SELECT id, nome , espessura_mm, largura_mm, altura_mm, preco_m2, estoque_chapas FROM chapas_mdf ORDER BY nome"  
+        "SELECT id, nome, espessura_mm, largura_mm, altura_mm, preco_m2, estoque_chapas, cor FROM chapas_mdf WHERE usuario_id = ? OR usuario_id IS NULL ORDER BY nome",
+        [usuario_id],
     )
     return [_chapa_to_dict(row) for row in result.rows]
 
@@ -62,9 +66,9 @@ def listar_chapas(usuario_id: str = Depends(get_current_user)):
 def buscar_chapa(chapa_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     result = client.execute(
-        "SELECT id, nome , espessura_mm, largura_mm, altura_mm, preco_m2, estoque_chapas FROM chapas_mdf WHERE id = ?",
-        [chapa_id],
-    ) 
+        "SELECT id, nome, espessura_mm, largura_mm, altura_mm, preco_m2, estoque_chapas, cor FROM chapas_mdf WHERE id = ? AND (usuario_id = ? OR usuario_id IS NULL)",
+        [chapa_id, usuario_id],
+    )
     if not result.rows:
         raise HTTPException(status_code=404, detail="Chapa não encontrada")
     return _chapa_to_dict(result.rows[0])
@@ -73,8 +77,8 @@ def buscar_chapa(chapa_id: str, usuario_id: str = Depends(get_current_user)):
 def atualizar_chapa(chapa_id: str, dados: ChapaUpdateInput, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     existe = client.execute(
-        "SELECT id FROM chapas_mdf WHERE id = ?",
-        [chapa_id],
+        "SELECT id FROM chapas_mdf WHERE id = ? AND usuario_id = ?",
+        [chapa_id, usuario_id],
     )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Chapa não encontrada")
@@ -91,7 +95,10 @@ def atualizar_chapa(chapa_id: str, dados: ChapaUpdateInput, usuario_id: str = De
 @router.delete("/chapas/{chapa_id}", status_code=204)
 def deletar_chapa(chapa_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
-    existe = client.execute("SELECT id FROM chapas_mdf WHERE id = ?", [chapa_id])
+    existe = client.execute(
+        "SELECT id FROM chapas_mdf WHERE id = ? AND usuario_id = ?",
+        [chapa_id, usuario_id],
+    )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Chapa não encontrada")
     client.execute("DELETE FROM chapas_mdf WHERE id = ?", [chapa_id])
@@ -128,81 +135,88 @@ def criar_fita(dados: FitaInput, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     fita_id = str(uuid.uuid4())
     client.execute(
-        "INSERT INTO fitas_borda (id, nome, cor, preco_metro, estoque_metros) VALUES (?, ?, ?, ?, ?)",
-        [fita_id, dados.nome, dados.cor, dados.preco_metro, dados.estoque_metros],
+        "INSERT INTO fitas_borda (id, usuario_id, nome, cor, preco_metro, estoque_metros) VALUES (?, ?, ?, ?, ?, ?)",
+        [fita_id, usuario_id, dados.nome, dados.cor, dados.preco_metro, dados.estoque_metros],
     )
     return {"id": fita_id, **dados.model_dump()}
- 
- 
+
+
 @router.get("/fitas")
 def listar_fitas(usuario_id: str = Depends(get_current_user)):
     client = get_client()
     resultado = client.execute(
-        "SELECT id, nome, cor, preco_metro, estoque_metros FROM fitas_borda ORDER BY nome"
+        "SELECT id, nome, cor, preco_metro, estoque_metros FROM fitas_borda WHERE usuario_id = ? OR usuario_id IS NULL ORDER BY nome",
+        [usuario_id],
     )
     return [_fita_to_dict(row) for row in resultado.rows]
- 
- 
+
+
 @router.get("/fitas/{fita_id}")
 def buscar_fita(fita_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     resultado = client.execute(
-        "SELECT id, nome, cor, preco_metro, estoque_metros FROM fitas_borda WHERE id = ?",
-        [fita_id],
+        "SELECT id, nome, cor, preco_metro, estoque_metros FROM fitas_borda WHERE id = ? AND (usuario_id = ? OR usuario_id IS NULL)",
+        [fita_id, usuario_id],
     )
     if not resultado.rows:
         raise HTTPException(status_code=404, detail="Fita não encontrada")
     return _fita_to_dict(resultado.rows[0])
- 
- 
+
+
 @router.patch("/fitas/{fita_id}")
 def atualizar_fita(fita_id: str, dados: FitaUpdate, usuario_id: str = Depends(get_current_user)):
     client = get_client()
-    existe = client.execute("SELECT id FROM fitas_borda WHERE id = ?", [fita_id])
+    existe = client.execute(
+        "SELECT id FROM fitas_borda WHERE id = ? AND usuario_id = ?",
+        [fita_id, usuario_id],
+    )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Fita não encontrada")
- 
+
     campos = dados.model_dump(exclude_none=True)
     if not campos:
         raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
- 
+
     set_clause = ", ".join(f"{campo} = ?" for campo in campos)
     valores = list(campos.values()) + [fita_id]
     client.execute(f"UPDATE fitas_borda SET {set_clause} WHERE id = ?", valores)
     return {"id": fita_id, **campos}
- 
- 
+
+
 @router.delete("/fitas/{fita_id}", status_code=204)
 def deletar_fita(fita_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
-    existe = client.execute("SELECT id FROM fitas_borda WHERE id = ?", [fita_id])
+    existe = client.execute(
+        "SELECT id FROM fitas_borda WHERE id = ? AND usuario_id = ?",
+        [fita_id, usuario_id],
+    )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Fita não encontrada")
     client.execute("DELETE FROM fitas_borda WHERE id = ?", [fita_id])
     return None
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Ferragens (dobradiça, corrediça, puxador, minifix, cavilha)
 # ---------------------------------------------------------------------------
- 
+
 TIPOS_FERRAGEM_VALIDOS = {"dobradica", "corredica", "puxador", "minifix", "cavilha"}
- 
- 
+
+
 class FerragemInput(BaseModel):
     tipo: str
     nome: str
     preco_unitario: float
     estoque: int = 0
- 
- 
+
+
 class FerragemUpdate(BaseModel):
     tipo: Optional[str] = None
     nome: Optional[str] = None
     preco_unitario: Optional[float] = None
     estoque: Optional[int] = None
- 
- 
+
+
 def _ferragem_to_dict(row):
     return {
         "id": row[0],
@@ -211,8 +225,8 @@ def _ferragem_to_dict(row):
         "preco_unitario": row[3],
         "estoque": row[4],
     }
- 
- 
+
+
 def _validar_tipo(tipo: str):
     tipo_normalizado = _normalizar_tipo(tipo)
     if tipo_normalizado not in TIPOS_FERRAGEM_VALIDOS:
@@ -227,71 +241,78 @@ def _normalizar_tipo(tipo: str):
     sem_acentos = unicodedata.normalize("NFKD", tipo)
     sem_acentos = "".join(caractere for caractere in sem_acentos if not unicodedata.combining(caractere))
     return re.sub(r"[\s-]+", "", sem_acentos.strip().lower())
- 
- 
+
+
 @router.post("/ferragens", status_code=201)
 def criar_ferragem(dados: FerragemInput, usuario_id: str = Depends(get_current_user)):
     tipo = _validar_tipo(dados.tipo)
     client = get_client()
     ferragem_id = str(uuid.uuid4())
     client.execute(
-        "INSERT INTO ferragens (id, tipo, nome, preco_unitario, estoque) VALUES (?, ?, ?, ?, ?)",
-        [ferragem_id, tipo, dados.nome, dados.preco_unitario, dados.estoque],
+        "INSERT INTO ferragens (id, usuario_id, tipo, nome, preco_unitario, estoque) VALUES (?, ?, ?, ?, ?, ?)",
+        [ferragem_id, usuario_id, tipo, dados.nome, dados.preco_unitario, dados.estoque],
     )
     return {"id": ferragem_id, **dados.model_dump(), "tipo": tipo}
- 
- 
+
+
 @router.get("/ferragens")
 def listar_ferragens(tipo: Optional[str] = None, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     if tipo:
         tipo = _validar_tipo(tipo)
         resultado = client.execute(
-            "SELECT id, tipo, nome, preco_unitario, estoque FROM ferragens WHERE tipo = ? ORDER BY nome",
-            [tipo],
+            "SELECT id, tipo, nome, preco_unitario, estoque FROM ferragens WHERE (usuario_id = ? OR usuario_id IS NULL) AND tipo = ? ORDER BY nome",
+            [usuario_id, tipo],
         )
     else:
         resultado = client.execute(
-            "SELECT id, tipo, nome, preco_unitario, estoque FROM ferragens ORDER BY tipo, nome"
+            "SELECT id, tipo, nome, preco_unitario, estoque FROM ferragens WHERE usuario_id = ? OR usuario_id IS NULL ORDER BY tipo, nome",
+            [usuario_id],
         )
     return [_ferragem_to_dict(row) for row in resultado.rows]
- 
- 
+
+
 @router.get("/ferragens/{ferragem_id}")
 def buscar_ferragem(ferragem_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     resultado = client.execute(
-        "SELECT id, tipo, nome, preco_unitario, estoque FROM ferragens WHERE id = ?",
-        [ferragem_id],
+        "SELECT id, tipo, nome, preco_unitario, estoque FROM ferragens WHERE id = ? AND (usuario_id = ? OR usuario_id IS NULL)",
+        [ferragem_id, usuario_id],
     )
     if not resultado.rows:
         raise HTTPException(status_code=404, detail="Ferragem não encontrada")
     return _ferragem_to_dict(resultado.rows[0])
- 
- 
+
+
 @router.patch("/ferragens/{ferragem_id}")
 def atualizar_ferragem(ferragem_id: str, dados: FerragemUpdate, usuario_id: str = Depends(get_current_user)):
     client = get_client()
-    existe = client.execute("SELECT id FROM ferragens WHERE id = ?", [ferragem_id])
+    existe = client.execute(
+        "SELECT id FROM ferragens WHERE id = ? AND usuario_id = ?",
+        [ferragem_id, usuario_id],
+    )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Ferragem não encontrada")
- 
+
     campos = dados.model_dump(exclude_none=True)
     if not campos:
         raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
     if "tipo" in campos:
         campos["tipo"] = _validar_tipo(campos["tipo"])
- 
+
     set_clause = ", ".join(f"{campo} = ?" for campo in campos)
     valores = list(campos.values()) + [ferragem_id]
     client.execute(f"UPDATE ferragens SET {set_clause} WHERE id = ?", valores)
     return {"id": ferragem_id, **campos}
- 
- 
+
+
 @router.delete("/ferragens/{ferragem_id}", status_code=204)
 def deletar_ferragem(ferragem_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
-    existe = client.execute("SELECT id FROM ferragens WHERE id = ?", [ferragem_id])
+    existe = client.execute(
+        "SELECT id FROM ferragens WHERE id = ? AND usuario_id = ?",
+        [ferragem_id, usuario_id],
+    )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Ferragem não encontrada")
     client.execute("DELETE FROM ferragens WHERE id = ?", [ferragem_id])

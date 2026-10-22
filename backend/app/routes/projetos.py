@@ -12,16 +12,20 @@ from app.routes.auth import get_current_user
 router = APIRouter()
 
 STATUS_VALIDOS = {"lead", "orcamento", "producao", "montagem"}
+# Fase 6: ids de cenário conhecidos (mesma lista de frontend/src/lib/cenarios.js)
+CENARIOS_VALIDOS = {"neutro", "sala", "quarto", "cozinha", "escritorio"}
 
 
 class ProjetoInput(BaseModel):
     nome: str
     cliente_id: str
+    cenario: Optional[str] = None
 
 
 class ProjetoUpdate(BaseModel):
     nome: Optional[str] = None
     status: Optional[str] = None
+    cenario: Optional[str] = None
 
 
 def _row_to_dict(row):
@@ -31,22 +35,35 @@ def _row_to_dict(row):
         "nome": row[2],
         "status": row[3],
         "modulos": json.loads(row[4]) if row[4] else [],
-        "criado_em": row[5],
+        "cenario": row[5] if len(row) > 5 and row[5] else "neutro",
+        "criado_em": row[6] if len(row) > 6 else None,
     }
 
 
+def _validar_cenario(cenario):
+    if cenario is None:
+        return None
+    if cenario not in CENARIOS_VALIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cenário inválido. Use um de: {', '.join(sorted(CENARIOS_VALIDOS))}",
+        )
+    return cenario
+
+
 @router.post("", status_code=201, dependencies=[Depends(get_current_user)])
-def criar_projeto(dados: ProjetoInput):
+def criar_projeto(dados: ProjetoInput, usuario_id: str = Depends(get_current_user)):
     client = get_client()
 
     cliente_existe = client.execute("SELECT id FROM clientes WHERE id = ?", [dados.cliente_id])
     if not cliente_existe.rows:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
+    cenario = _validar_cenario(dados.cenario) or "neutro"
     projeto_id = str(uuid.uuid4())
     client.execute(
-        "INSERT INTO projetos (id, cliente_id, nome, status, modulos_json) VALUES (?, ?, ?, ?, ?)",
-        [projeto_id, dados.cliente_id, dados.nome, "lead", "[]"],
+        "INSERT INTO projetos (id, usuario_id, cliente_id, nome, status, modulos_json, cenario) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [projeto_id, usuario_id, dados.cliente_id, dados.nome, "lead", "[]", cenario],
     )
 
     return {
@@ -55,34 +72,36 @@ def criar_projeto(dados: ProjetoInput):
         "nome": dados.nome,
         "status": "lead",
         "modulos": [],
+        "cenario": cenario,
     }
 
 
 @router.get("", dependencies=[Depends(get_current_user)])
-def listar_projetos(status: Optional[str] = None):
+def listar_projetos(status: Optional[str] = None, usuario_id: str = Depends(get_current_user)):
     client = get_client()
 
     if status:
         if status not in STATUS_VALIDOS:
             raise HTTPException(status_code=400, detail=f"Status inválido. Use um de: {STATUS_VALIDOS}")
         resultado = client.execute(
-            "SELECT id, cliente_id, nome, status, modulos_json, criado_em FROM projetos WHERE status = ? ORDER BY criado_em DESC",
-            [status],
+            "SELECT id, cliente_id, nome, status, modulos_json, cenario, criado_em FROM projetos WHERE usuario_id = ? AND status = ? ORDER BY criado_em DESC",
+            [usuario_id, status],
         )
     else:
         resultado = client.execute(
-            "SELECT id, cliente_id, nome, status, modulos_json, criado_em FROM projetos ORDER BY criado_em DESC"
+            "SELECT id, cliente_id, nome, status, modulos_json, cenario, criado_em FROM projetos WHERE usuario_id = ? ORDER BY criado_em DESC",
+            [usuario_id],
         )
 
     return [_row_to_dict(row) for row in resultado.rows]
 
 
 @router.get("/{projeto_id}", dependencies=[Depends(get_current_user)])
-def buscar_projeto(projeto_id: str):
+def buscar_projeto(projeto_id: str, usuario_id: str = Depends(get_current_user)):
     client = get_client()
     resultado = client.execute(
-        "SELECT id, cliente_id, nome, status, modulos_json, criado_em FROM projetos WHERE id = ?",
-        [projeto_id],
+        "SELECT id, cliente_id, nome, status, modulos_json, cenario, criado_em FROM projetos WHERE id = ? AND usuario_id = ?",
+        [projeto_id, usuario_id],
     )
     if not resultado.rows:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
@@ -90,10 +109,13 @@ def buscar_projeto(projeto_id: str):
 
 
 @router.patch("/{projeto_id}", dependencies=[Depends(get_current_user)])
-def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate):
+def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate, usuario_id: str = Depends(get_current_user)):
     client = get_client()
 
-    existe = client.execute("SELECT id FROM projetos WHERE id = ?", [projeto_id])
+    existe = client.execute(
+        "SELECT id FROM projetos WHERE id = ? AND usuario_id = ?",
+        [projeto_id, usuario_id],
+    )
     if not existe.rows:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
@@ -103,6 +125,9 @@ def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate):
 
     if "status" in campos and campos["status"] not in STATUS_VALIDOS:
         raise HTTPException(status_code=400, detail=f"Status inválido. Use um de: {STATUS_VALIDOS}")
+
+    if "cenario" in campos:
+        _validar_cenario(campos["cenario"])
 
     set_clause = ", ".join(f"{campo} = ?" for campo in campos)
     valores = list(campos.values()) + [projeto_id]
@@ -129,6 +154,11 @@ class ModuloInput(BaseModel):
     aparencia: dict = {}
 
 
+def _agora_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _carregar_modulos(client, projeto_id: str):
     resultado = client.execute(
         "SELECT modulos_json FROM projetos WHERE id = ?", [projeto_id]
@@ -138,9 +168,11 @@ def _carregar_modulos(client, projeto_id: str):
     return json.loads(resultado.rows[0][0]) if resultado.rows[0][0] else []
 
 def _salvar_modulos(client, projeto_id: str, modulos: list):
+    # qualquer mudança de módulos marca o projeto como atualizado (o orçamento
+    # salvo vira "desatualizado" quando calculado_em < atualizado_em)
     client.execute(
-        "UPDATE projetos SET modulos_json = ? WHERE id = ?",
-        [json.dumps(modulos), projeto_id],
+        "UPDATE projetos SET modulos_json = ?, atualizado_em = ? WHERE id = ?",
+        [json.dumps(modulos), _agora_iso(), projeto_id],
     )
 
 @router.post("/{projeto_id}/modulos", status_code=201, dependencies=[Depends(get_current_user)])

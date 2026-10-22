@@ -350,6 +350,7 @@ export function gerarPlanoDeFuracao(dimensoes, estrutura, opcoes = {}) {
                         face: lado,
                         eixo: "x",
                         sentido: face.sentido,
+                        normal: [face.sentido, 0, 0],
                         x: face.x,
                         y,
                         z,
@@ -380,6 +381,7 @@ export function gerarPlanoDeFuracao(dimensoes, estrutura, opcoes = {}) {
                 eixo: "z",
                 face: "frontal",
                 sentido: -1,
+                normal: [0, 0, -1],
                 x,
                 y: porta.y + margem,
                 z: porta.zFace,
@@ -442,4 +444,155 @@ export function calcularPlanoDeFita(dimensoes, estrutura) {
         resumo,
         totalMetros: arestas.reduce((total, aresta) => total + aresta.comprimentoMm, 0) / 1000,
     };
+}
+
+export function medidasDeCorte(peca) {
+    const medidas = [peca.largura, peca.altura, peca.profundidade]
+        .map((medida) => Number(medida) || 0)
+        .sort((a, b) => b - a);
+    return [medidas[0], medidas[1]];
+}
+
+export function gerarApoiosPrateleira(dimensoes, estrutura) {
+    const plano = gerarPlanoDeFuracao(dimensoes, estrutura);
+    const vaos = gerarVaos(dimensoes, estrutura.divisoes || [], estrutura.casco);
+    const prateleiras = gerarPrateleiras(vaos, estrutura.internos || [], estrutura.portas || []);
+    const prateleirasEstrutura = new Map((estrutura.internos || []).map((item) => [item.id, item]));
+    const pinos = [];
+    const ajustes = [];
+
+    prateleiras.forEach((prateleira) => {
+        const furosDoVao = plano.furos.filter((furo) => furo.vaoId === prateleirasEstrutura.get(prateleira.id)?.vao_id);
+        const alturas = [...new Set(furosDoVao.map((furo) => furo.y))].sort((a, b) => a - b);
+        const alturaApoio = alturas.find((altura) => Math.abs(altura - prateleira.y) <= 0.5);
+
+        if (alturaApoio != null) {
+            furosDoVao
+                .filter((furo) => Math.abs(furo.y - alturaApoio) <= 0.5)
+                .forEach((furo) => {
+                    if (furo.tipo !== "pino-prateleira") return;
+                    if (furo.z < prateleira.z || furo.z > prateleira.z + prateleira.profundidade) return;
+                    pinos.push({
+                        id: `apoio-${prateleira.id}-${furo.id}`,
+                        tipo: "pino-apoio",
+                        prateleiraId: prateleira.id,
+                        x: furo.x,
+                        y: prateleira.y,
+                        z: furo.z,
+                        diametro: furo.diametro,
+                        normal: [furo.face === "esquerda" ? 1 : -1, 0, 0],
+                    });
+                });
+            return;
+        }
+
+        const vao = vaos.find((item) => item.id === prateleirasEstrutura.get(prateleira.id)?.vao_id);
+        if (alturas.length === 0 || !vao) {
+            ajustes.push({
+                prateleiraId: prateleira.id,
+                rotulo: "Prateleira",
+                motivo: "sem-furos",
+            });
+            return;
+        }
+
+        const alturaMaisProxima = alturas.reduce((maisProxima, altura) =>
+            Math.abs(altura - prateleira.y) < Math.abs(maisProxima - prateleira.y) ? altura : maisProxima
+        );
+        ajustes.push({
+            prateleiraId: prateleira.id,
+            rotulo: "Prateleira",
+            motivo: prateleira.y < alturas[0] ? "abaixo-do-primeiro-furo" : "no-ar",
+            folgaMm: Math.abs(alturaMaisProxima - prateleira.y),
+            posicaoMmSugerida: alturaMaisProxima - vao.y,
+        });
+    });
+
+    return { pinos, ajustes };
+}
+
+export function gerarFerragensVisuais(dimensoes, estrutura) {
+    const plano = gerarPlanoDeFuracao(dimensoes, estrutura);
+    const apoios = gerarApoiosPrateleira(dimensoes, estrutura);
+    const vaos = gerarVaos(dimensoes, estrutura.divisoes || [], estrutura.casco);
+    const portas = gerarPortas(vaos, estrutura.portas || []);
+    const config = plano.config;
+    const itens = [...apoios.pinos];
+
+    plano.furos
+        .filter((furo) => furo.tipo === "caneco-dobradica" || furo.tipo === "caneco-basculante")
+        .forEach((furo) => {
+            const porta = portas.find((item) => item.id === furo.origemId || item.portaId === furo.origemId);
+            if (!porta) return;
+            const ladoDireito = porta.ladoDobradica === "direita";
+            itens.push({
+                id: `dobradica-${furo.id}`,
+                tipo: "dobradica",
+                x: furo.x,
+                y: furo.y,
+                z: furo.z,
+                xLateral: ladoDireito ? porta.x + porta.largura : porta.x,
+                diametro: furo.diametro,
+                profundidade: furo.profundidade,
+            });
+        });
+
+    portas.forEach((porta) => {
+        if (porta.tipo === "corredica") return;
+        const ladoDireito = porta.ladoDobradica !== "direita";
+        itens.push({
+            id: `puxador-${porta.id}`,
+            tipo: "puxador",
+            x: ladoDireito ? porta.x + porta.largura - 50 : porta.x + 50,
+            y: porta.y + porta.altura / 2,
+            z: porta.zFace,
+            orientacao: "vertical",
+            espacamento: config.entreFurosPuxador || 128,
+        });
+    });
+
+    gerarGavetas(vaos, estrutura.internos || []).forEach((gaveta) => {
+        const alturaTrilho = 12;
+        const zTrilho = gaveta.z + Math.max(0, gaveta.profundidade - 450);
+        [gaveta.x, gaveta.x + gaveta.largura - 12].forEach((x, indice) => {
+            itens.push({
+                id: `corredica-${gaveta.id}-${indice}`,
+                tipo: "corredica-gaveta",
+                x,
+                y: gaveta.y + 10,
+                z: zTrilho,
+                largura: 12,
+                altura: alturaTrilho,
+                profundidade: Math.min(450, gaveta.profundidade),
+            });
+        });
+        itens.push({
+            id: `puxador-${gaveta.id}`,
+            tipo: "puxador",
+            x: gaveta.x + gaveta.largura / 2,
+            y: gaveta.y + gaveta.altura / 2,
+            z: gaveta.z + gaveta.profundidade,
+            orientacao: "horizontal",
+            espacamento: config.entreFurosPuxador || 128,
+        });
+    });
+
+    portas
+        .filter((porta) => porta.tipo === "corredica")
+        .forEach((porta) => {
+            [0, 1].forEach((indice) => {
+                itens.push({
+                    id: `trilho-${porta.id}-${indice}`,
+                    tipo: "trilho-porta",
+                    x: porta.x,
+                    y: indice === 0 ? porta.y : porta.y + porta.altura - 8,
+                    z: porta.zFace + porta.offsetZ,
+                    largura: porta.largura,
+                    altura: 8,
+                    profundidade: 20,
+                });
+            });
+        });
+
+    return itens;
 }

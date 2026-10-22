@@ -10,7 +10,9 @@ import { calcularFerragensModulo } from "./logicaFerragens";
 import {
     calcularPlanoDeFita,
     gerarPecasModulo,
+    gerarApoiosPrateleira,
     gerarPlanoDeFuracao,
+    medidasDeCorte,
 } from "./logicaFabricacao";
 
 const dimensoes = { largura: 900, altura: 800, profundidade: 600 };
@@ -305,4 +307,37 @@ test("prateleira recua da pista traseira da porta de correr", () => {
     expect(portas.find((porta) => porta.offsetZ < 0).offsetZ).toBe(-20);
     expect(prateleira.z + prateleira.profundidade).toBe(578);
     expect(600 - (prateleira.z + prateleira.profundidade)).toBe(22);
+});
+
+test("medidas de corte retornam os dois maiores lados da peça", () => {
+    expect(medidasDeCorte({ largura: 450, altura: 15, profundidade: 600 })).toEqual([600, 450]);
+});
+
+test("apoios de prateleira identificam furos alinhados e sugerem o primeiro nível", () => {
+    const dimensoesModulo = { largura: 900, altura: 800, profundidade: 600 };
+    const estrutura = {
+        divisoes: [],
+        internos: [{ id: "prat-1", tipo: "prateleira", vao_id: "raiz", posicaoMm: 64 }],
+        portas: [],
+        casco: { espessura: 15, incluirFundo: true, espessuraFundo: 6 },
+    };
+    const apoiosAlinhados = gerarApoiosPrateleira(dimensoesModulo, estrutura);
+
+    expect(apoiosAlinhados.pinos).toHaveLength(4);
+    expect(apoiosAlinhados.ajustes).toHaveLength(0);
+    expect(apoiosAlinhados.pinos[0]).toMatchObject({
+        tipo: "pino-apoio",
+        prateleiraId: "prat-1",
+        normal: [1, 0, 0],
+    });
+
+    const apoiosDesalinhados = gerarApoiosPrateleira(dimensoesModulo, {
+        ...estrutura,
+        internos: [{ ...estrutura.internos[0], posicaoMm: 65 }],
+    });
+    expect(apoiosDesalinhados.ajustes[0]).toMatchObject({
+        prateleiraId: "prat-1",
+        motivo: "no-ar",
+        posicaoMmSugerida: 64,
+    });
 });

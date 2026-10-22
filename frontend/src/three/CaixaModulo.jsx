@@ -2,12 +2,15 @@ import React, { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { useModuloStore } from "../store/moduloStore";
 import { criarTexturaMDF } from "./materiais/texturaMDF";
+import { indiceDeChapas, corDaPeca, aplicarHerancaCasco } from "../lib/logicaChapas";
+import CamadaFabricacao from "./CamadaFabricacao";
 import {
   gerarVaos,
   gerarPaineisDivisorios,
   gerarPrateleiras,
   gerarGavetas,
   gerarPortas,
+  gerarPecasAvulsas,
   calcularPainelDivisao,
   calcularCentroPorta,
 } from "./logicaEstrutura";
@@ -35,12 +38,21 @@ function medidas(item) {
   return [m(item.largura), m(item.altura), m(item.profundidade)];
 }
 
-function VaoSelecionavel({ vao, profundidade, selecionado, onSelecionar }) {
+function VaoSelecionavel({ vao, profundidade, selecionado, onSelecionar, onSelecionarPeca }) {
   return (
     <mesh
       position={centro(vao, profundidade)}
+      userData={{ tipo: "vao" }}
       onClick={(e) => {
         e.stopPropagation();
+        // o vão transparente fica na frente das peças que estão dentro dele:
+        // se a primeira coisa sólida sob o clique é uma peça avulsa, seleciona a peça
+        const primeiroSolido = (e.intersections || []).find((hit) => hit.object?.userData?.solido);
+        const pecaId = primeiroSolido?.object?.userData?.pecaAvulsaId;
+        if (pecaId) {
+          onSelecionarPeca(pecaId);
+          return;
+        }
         onSelecionar(vao.id);
       }}
     >
@@ -58,7 +70,7 @@ function VaoSelecionavel({ vao, profundidade, selecionado, onSelecionar }) {
 
 function PainelDivisorio({ painel, profundidade, textura }) {
   return (
-    <mesh position={centro(painel, profundidade)} castShadow receiveShadow>
+    <mesh position={centro(painel, profundidade)} userData={{ solido: true }} castShadow receiveShadow>
       <boxGeometry args={medidas(painel)} />
       <meshStandardMaterial map={textura} color="#ffffff" roughness={0.8} side={THREE.DoubleSide} />
     </mesh>
@@ -85,16 +97,66 @@ function PreviaDivisao({ vaos, previa, profundidade }) {
   );
 }
 
+// Peça cadastrada pelo criador; a selecionada na lista ganha destaque e contorno
+function PecaAvulsa({ peca, profundidade, textura, selecionada, onSelecionar }) {
+  const tam = medidas(peca);
+  const contorno = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(...tam)),
+    [tam[0], tam[1], tam[2]]
+  );
+
+  const handlers = onSelecionar
+    ? {
+        onClick: (e) => {
+          e.stopPropagation();
+          onSelecionar(peca.id);
+        },
+        onPointerOver: (e) => {
+          e.stopPropagation();
+          document.body.style.cursor = "pointer";
+        },
+        onPointerOut: () => {
+          document.body.style.cursor = "auto";
+        },
+      }
+    : {};
+
+  return (
+    <mesh
+      position={centro(peca, profundidade)}
+      userData={{ solido: true, pecaAvulsaId: peca.id }}
+      {...handlers}
+      castShadow
+      receiveShadow
+    >
+      <boxGeometry args={tam} />
+      <meshStandardMaterial
+        map={textura}
+        color={selecionada ? "#fde68a" : "#ffffff"}
+        emissive={selecionada ? "#f59e0b" : "#000000"}
+        emissiveIntensity={selecionada ? 0.25 : 0}
+        roughness={0.8}
+        side={THREE.DoubleSide}
+      />
+      {selecionada && (
+        <lineSegments geometry={contorno} renderOrder={12}>
+          <lineBasicMaterial color="#b45309" depthTest={false} transparent />
+        </lineSegments>
+      )}
+    </mesh>
+  );
+}
+
 function Prateleira({ prateleira, profundidade, textura }) {
   return (
-    <mesh position={centro(prateleira, profundidade)} castShadow receiveShadow>
+    <mesh position={centro(prateleira, profundidade)} userData={{ solido: true }} castShadow receiveShadow>
       <boxGeometry args={medidas(prateleira)} />
       <meshStandardMaterial map={textura} color="#ffffff" roughness={0.8} side={THREE.DoubleSide} />
     </mesh>
   );
 }
 
-function Gaveta({ gaveta, profundidade, textura }) {
+function Gaveta({ gaveta, profundidade, textura, ocultarPuxadorSimulado }) {
   const corpoLargura = gaveta.largura - FOLGA_CORREDICA_MM * 2;
   const corpoAltura = Math.max(gaveta.altura - 30, 40);
   const corpoProf = Math.max(gaveta.profundidade - RECUO_TRASEIRO_MM, 50);
@@ -152,33 +214,66 @@ function Gaveta({ gaveta, profundidade, textura }) {
   return (
     <group position={[m(gaveta.x + gaveta.largura / 2), m(gaveta.y + gaveta.altura / 2), 0]}>
       {pecas.map((p) => (
-        <mesh key={p.id} position={p.pos.map((v) => m(v))} castShadow receiveShadow>
+        <mesh key={p.id} position={p.pos.map((v) => m(v))} userData={{ solido: true }} castShadow receiveShadow>
           <boxGeometry args={p.tam.map((v) => m(v))} />
           <meshStandardMaterial map={textura} color="#ffffff" roughness={0.7} side={THREE.DoubleSide} />
         </mesh>
       ))}
 
-      {/* puxador simulado */}
-      <mesh position={[0, m(gaveta.altura * 0.3), m(zFace + ESP_FRENTE_MM / 2 + 2)]}>
-        <boxGeometry args={[m(gaveta.largura * 0.5), m(6), m(4)]} />
-        <meshStandardMaterial color="#4a4a4a" />
-      </mesh>
+      {/* puxador simulado (some quando as ferragens reais estão visíveis) */}
+      {!ocultarPuxadorSimulado && (
+        <mesh position={[0, m(gaveta.altura * 0.3), m(zFace + ESP_FRENTE_MM / 2 + 2)]}>
+          <boxGeometry args={[m(gaveta.largura * 0.5), m(6), m(4)]} />
+          <meshStandardMaterial color="#4a4a4a" />
+        </mesh>
+      )}
     </group>
   );
 }
 
-export default function CaixaModulo({ vaoSelecionado, onSelecionarVao }) {
-  const dimensoes = useModuloStore((state) => state.modulo.dimensoes);
-  const cor = useModuloStore((state) => state.modulo.aparencia.cor);
-  const orientacaoFibra = useModuloStore((state) => state.modulo.aparencia.orientacao_fibra);
-  const casco = useModuloStore((state) => state.modulo.estrutura.casco);
-  const divisoes = useModuloStore((state) => state.modulo.estrutura.divisoes);
-  const internos = useModuloStore((state) => state.modulo.estrutura.internos);
-  const portas = useModuloStore((state) => state.modulo.estrutura.portas);
+export default function CaixaModulo({ vaoSelecionado, onSelecionarVao, modulo, somenteLeitura = false, chapas = null }) {
+  // Fase 2 (mini visualizador): a prop `modulo` (dimensoes/aparencia/estrutura)
+  // tem prioridade sobre o store global; `somenteLeitura` desliga interações.
+  // Fase 5: `chapas` (lista do estoque) dá cor por peça via chapaId, com herança do casco.
+  const doStore = useModuloStore((state) => state.modulo);
+  const fonte = modulo || doStore;
+  const dimensoes = fonte.dimensoes;
+  const corDoModulo = fonte.aparencia.cor;
+  const orientacaoFibra = fonte.aparencia.orientacao_fibra;
+  const casco = fonte.estrutura.casco;
+  const divisoes = fonte.estrutura.divisoes;
+  const internos = fonte.estrutura.internos;
+  const portas = fonte.estrutura.portas;
   const previa = useModuloStore((state) => state.previaDivisao);
+  const estrutura = fonte.estrutura;
+  const pecasAvulsasBrutas = estrutura.pecas;
+  const pecaAvulsaSelecionada = useModuloStore((state) => state.pecaAvulsaSelecionada);
+  const visualizacao = useModuloStore((state) => state.visualizacao);
+  const setPecaAvulsaSelecionada = useModuloStore((state) => state.setPecaAvulsaSelecionada);
+  const previaAtiva = somenteLeitura ? null : previa;
+  const pecaSelecionadaAtiva = somenteLeitura ? null : pecaAvulsaSelecionada;
+  const modoFabricacaoAtivo = somenteLeitura
+    ? { furos: false, ferragens: false, ampliar: true }
+    : visualizacao;
+
+  // Fase 5: cor por peça (com fallback para a cor do módulo)
+  const indice = useMemo(() => indiceDeChapas(chapas || []), [chapas]);
+  const corDaEstrutura = useMemo(() => {
+    const comHeranca = aplicarHerancaCasco(estrutura);
+    const corDe = (item) => corDaPeca(item, casco?.chapaId, indice);
+    return {
+      casco: corDe({ chapaId: casco?.chapaId }),
+      divisoes: Object.fromEntries((comHeranca.divisoes || []).map((d) => [d.id, corDe(d)])),
+      internos: Object.fromEntries((comHeranca.internos || []).map((i) => [i.id, corDe(i)])),
+      portas: Object.fromEntries((comHeranca.portas || []).map((p) => [p.id, corDe(p)])),
+      pecas: Object.fromEntries((comHeranca.pecas || []).map((p) => [p.id, corDe(p)])),
+    };
+  }, [estrutura, casco, indice]);
 
   const { largura, altura, profundidade } = dimensoes;
-  const textura = useMemo(() => criarTexturaMDF(cor, orientacaoFibra), [cor, orientacaoFibra]);
+  // Fase 5: a textura base usa a cor da chapa do casco (ou a cor de fallback do módulo)
+  const corBase = corDaEstrutura.casco?.cor || corDoModulo;
+  const textura = useMemo(() => criarTexturaMDF(corBase, orientacaoFibra), [corBase, orientacaoFibra]);
 
   useEffect(() => () => textura.dispose(), [textura]);
 
@@ -195,6 +290,12 @@ export default function CaixaModulo({ vaoSelecionado, onSelecionarVao }) {
   
   const prateleiras = useMemo(() => gerarPrateleiras(vaos, internos, portas), [vaos, internos, portas]);
   const gavetas = useMemo(() => gerarGavetas(vaos, internos), [vaos, internos]);
+  const pecasAvulsas = useMemo(
+    () => gerarPecasAvulsas(pecasAvulsasBrutas || [], dimensoes),
+    [pecasAvulsasBrutas, dimensoes]
+  );
+  // com furos ou ferragens ligados, as portas ficam translúcidas para deixar ver o que há atrás
+  const modoFabricacao = Boolean(modoFabricacaoAtivo?.furos || modoFabricacaoAtivo?.ferragens);
   const portasRenderizaveis = useMemo(() => gerarPortas(vaos, portas), [vaos, portas]);
   const espessuraCorpo = casco.espessura;
   const incluirFundo = casco.incluirFundo;
@@ -266,30 +367,62 @@ export default function CaixaModulo({ vaoSelecionado, onSelecionarVao }) {
         <Prateleira key={p.id} prateleira={p} profundidade={profundidade} textura={textura} />
       ))}
 
-      {gavetas.map((g) => (
-        <Gaveta key={g.id} gaveta={g} profundidade={profundidade} textura={textura} />
+      {pecasAvulsas.map((peca) => (
+        <PecaAvulsa
+          key={peca.id}
+          peca={peca}
+          profundidade={profundidade}
+          textura={textura}
+          selecionada={pecaSelecionadaAtiva === peca.id}
+          onSelecionar={somenteLeitura ? undefined : setPecaAvulsaSelecionada}
+        />
       ))}
 
-      {vaosLivres.map((vao) => (
+      {gavetas.map((g) => (
+        <Gaveta
+          key={g.id}
+          gaveta={g}
+          profundidade={profundidade}
+          textura={textura}
+          ocultarPuxadorSimulado={Boolean(modoFabricacaoAtivo?.ferragens)}
+        />
+      ))}
+
+      {!somenteLeitura && vaosLivres.map((vao) => (
         <VaoSelecionavel
           key={vao.id}
           vao={vao}
           profundidade={profundidade}
           selecionado={vaoSelecionado === vao.id}
           onSelecionar={onSelecionarVao}
+          onSelecionarPeca={setPecaAvulsaSelecionada}
         />
       ))}
 
       {portasRenderizaveis.map((porta) => (
-        <Porta key={porta.id} porta={porta} profundidade={dimensoes.profundidade} />
+        <Porta
+          key={porta.id}
+          porta={porta}
+          profundidade={dimensoes.profundidade}
+          translucida={modoFabricacao}
+        />
       ))}
 
-      {previa && <PreviaDivisao vaos={vaos} previa={previa} profundidade={profundidade} />}
+      <CamadaFabricacao
+        dimensoes={dimensoes}
+        estrutura={estrutura}
+        profundidade={profundidade}
+        mostrarFuros={Boolean(modoFabricacaoAtivo?.furos)}
+        mostrarFerragens={Boolean(modoFabricacaoAtivo?.ferragens)}
+        ampliar={modoFabricacaoAtivo?.ampliar !== false}
+      />
+
+      {previaAtiva && <PreviaDivisao vaos={vaos} previa={previaAtiva} profundidade={profundidade} />}
     </group>
   );
 }
 
-function Porta({ porta, profundidade }) {
+function Porta({ porta, profundidade, translucida = false }) {
   const largura = porta.largura * MM_PARA_M;
   const altura = porta.altura * MM_PARA_M;
   const espessura = ESPESSURA_PORTA_MM * MM_PARA_M;
@@ -314,9 +447,22 @@ function Porta({ porta, profundidade }) {
   const cor = porta.tipo === "bascula" ? "#b8ac91" : "#d4c8ad";
 
   return (
-    <mesh position={[posX, posY, posZ]} rotation={[0, rotacaoY, 0]} castShadow receiveShadow>
+    <mesh
+      position={[posX, posY, posZ]}
+      rotation={[0, rotacaoY, 0]}
+      userData={{ solido: true }}
+      castShadow
+      receiveShadow
+    >
       <boxGeometry args={[largura, altura, espessura]} />
-      <meshStandardMaterial color={cor} roughness={0.6} side={THREE.DoubleSide} />
+      <meshStandardMaterial
+        color={cor}
+        roughness={0.6}
+        side={THREE.DoubleSide}
+        transparent={translucida}
+        opacity={translucida ? 0.3 : 1}
+        depthWrite={!translucida}
+      />
     </mesh>
   );
 }

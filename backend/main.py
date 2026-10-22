@@ -4,7 +4,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import auth, clientes, projetos, insumos, biblioteca
+from app.routes import auth, clientes, projetos, insumos, biblioteca, orcamento, contratos, manual, orcamentos
 
 app = FastAPI(title="Marcenaria CAD/CAM API")
 
@@ -26,12 +26,13 @@ app.include_router(clientes.router, prefix="/clientes", tags=["clientes"])
 app.include_router(projetos.router, prefix="/projetos", tags=["projetos"])
 app.include_router(insumos.router, prefix="/insumos", tags=["insumos"])
 app.include_router(biblioteca.router)
+app.include_router(orcamento.router, prefix="/orcamento", tags=["orcamento"])
+app.include_router(contratos.router, prefix="/contratos", tags=["contratos"])
+# manual público (sem token): acessado pelo QR Code das etiquetas
+app.include_router(manual.router, prefix="/publico", tags=["manual"])
+app.include_router(orcamentos.router, prefix="/orcamentos", tags=["orcamentos"])
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-# Rotas a incluir nas próximas fases:
-# from app.routes import insumos, kanban, orcamento, contratos
-# app.include_router(insumos.router, prefix="/insumos")

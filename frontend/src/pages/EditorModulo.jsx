@@ -1,12 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Cena from "../three/Cena";
 import { useModuloStore } from "../store/moduloStore";
 import { api } from "../lib/api";
 import { useHistory, useLocation } from "react-router-dom";
 import { CATEGORIAS } from "../lib/categoria";
-import { gerarPrateleiras, gerarVaos, limitesDivisao } from "../three/logicaEstrutura";
+import SeletorCenario from "../components/SeletorCenario";
+import { classeInput } from "../components/ui";
+import {
+  gerarPrateleiras,
+  gerarVaos,
+  geometriaPecaAvulsa,
+  limitesDivisao,
+  ORIENTACOES_PECA,
+} from "../three/logicaEstrutura";
 import { calcularFerragensModulo } from "../three/logicaFerragens";
-import { calcularPlanoDeFita, gerarPlanoDeFuracao } from "../three/logicaFabricacao";
+import {
+  calcularPlanoDeFita,
+  gerarApoiosPrateleira,
+  gerarPlanoDeFuracao,
+  medidasDeCorte,
+} from "../three/logicaFabricacao";
 
 
 
@@ -138,6 +151,24 @@ function PainelFabricacao({ modulo, atualizarConfig }) {
   const configFita = modulo.estrutura.fabricacao.fitaBorda;
   const planoFuracao = gerarPlanoDeFuracao(modulo.dimensoes, modulo.estrutura);
   const planoFita = calcularPlanoDeFita(modulo.dimensoes, modulo.estrutura);
+  const visualizacao = useModuloStore((state) => state.visualizacao);
+  const setVisualizacao = useModuloStore((state) => state.setVisualizacao);
+  const atualizarInterno = useModuloStore((state) => state.atualizarInterno);
+  const modoFabricacao = visualizacao.furos || visualizacao.ferragens;
+  const apoios = modoFabricacao
+    ? gerarApoiosPrateleira(modulo.dimensoes, modulo.estrutura)
+    : { pinos: [], ajustes: [] };
+  const ajustesComSugestao = apoios.ajustes.filter((ajuste) => ajuste.posicaoMmSugerida != null);
+
+  function textoAjuste(ajuste) {
+    if (ajuste.motivo === "no-ar") {
+      return `${ajuste.folgaMm} mm acima do pino. Para apoiar direto: altura ${ajuste.posicaoMmSugerida} mm.`;
+    }
+    if (ajuste.motivo === "abaixo-do-primeiro-furo") {
+      return `abaixo do primeiro furo. Menor altura com apoio: ${ajuste.posicaoMmSugerida} mm.`;
+    }
+    return "o vão não tem furos de pino (vão menor que os recuos da furação).";
+  }
 
   useEffect(() => {
     api.listarFitas()
@@ -190,6 +221,72 @@ function PainelFabricacao({ modulo, atualizarConfig }) {
   return (
     <section className="mt-4 border-t border-gray-200 pt-4">
       <h3 className="mb-2 font-semibold text-gray-700">Fabricação</h3>
+
+      <div className="mb-3 rounded border border-gray-200 bg-gray-50 p-2">
+        <p className="mb-2 text-xs font-medium text-gray-700">Ver no 3D</p>
+        <label className="mb-1 flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={visualizacao.furos}
+            onChange={(evento) => setVisualizacao("furos", evento.target.checked)}
+          />
+          Furos
+        </label>
+        <label className="mb-1 flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={visualizacao.ferragens}
+            onChange={(evento) => setVisualizacao("ferragens", evento.target.checked)}
+          />
+          Ferragens (dobradiça, puxador, corrediça)
+        </label>
+        <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={visualizacao.ampliar}
+            onChange={(evento) => setVisualizacao("ampliar", evento.target.checked)}
+          />
+          Ampliar os marcadores de furo
+        </label>
+        <ul className="space-y-0.5 text-xs text-gray-600">
+          <li><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: "#111827" }} />Furo de pino de prateleira</li>
+          <li><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: "#dc2626" }} />Caneco da dobradiça</li>
+          <li><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: "#2563eb" }} />Puxador</li>
+          <li><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: "#059669" }} />Corrediça de gaveta</li>
+        </ul>
+        {(visualizacao.furos || visualizacao.ferragens) && (
+          <p className="mt-2 text-xs text-gray-500">
+            As portas ficam translúcidas para mostrar o que há atrás. As ferragens são desenhadas de forma aproximada.
+          </p>
+        )}
+      </div>
+
+      {apoios.ajustes.length > 0 && (
+        <div className="mb-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          <p className="mb-1 font-medium">Prateleiras fora dos furos ({apoios.ajustes.length})</p>
+          <ul className="mb-2 space-y-1">
+            {apoios.ajustes.map((ajuste) => (
+              <li key={ajuste.prateleiraId}>
+                {ajuste.rotulo}: {textoAjuste(ajuste)}
+              </li>
+            ))}
+          </ul>
+          {ajustesComSugestao.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                ajustesComSugestao.forEach((ajuste) =>
+                  atualizarInterno(ajuste.prateleiraId, { posicaoMm: ajuste.posicaoMmSugerida })
+                )
+              }
+              className="w-full rounded border border-amber-500 bg-white px-2 py-1 font-medium text-amber-800 hover:bg-amber-100"
+            >
+              Encaixar prateleiras nos furos
+            </button>
+          )}
+        </div>
+      )}
+
       <details className="mb-3 rounded border border-gray-200 p-2">
         <summary className="cursor-pointer text-sm font-medium text-gray-700">
           Furação: {planoFuracao.totalFuros} operações
@@ -207,6 +304,12 @@ function PainelFabricacao({ modulo, atualizarConfig }) {
           {campoFuracao("profundidadeCaneco", "Profundidade do caneco", 5, 20)}
           {campoFuracao("recuoCanecoBorda", "Centro do caneco à borda", 10, 40, 0.5)}
           {campoFuracao("distanciaDobradiçaExtremidade", "Caneco ao topo/base", 40, 200)}
+          <p className="mb-2 text-xs font-medium text-gray-700">Puxadores</p>
+          {campoFuracao("entreFurosPuxador", "Distância entre os furos", 32, 320, 32)}
+          {campoFuracao("diametroPuxador", "Diâmetro do furo", 3, 10, 0.5)}
+          <p className="mb-2 text-xs font-medium text-gray-700">Corrediça de gaveta</p>
+          {campoFuracao("diametroParafuso", "Diâmetro do furo", 2, 8, 0.5)}
+          {campoFuracao("recuoParafusoCorredica", "Primeiro furo (à frente do vão)", 10, 100)}
           {planoFuracao.avisos.length > 0 && (
             <ul className="mb-2 rounded bg-amber-50 p-2 text-xs text-amber-800">
               {planoFuracao.avisos.map((aviso) => <li key={aviso}>{aviso}</li>)}
@@ -218,6 +321,23 @@ function PainelFabricacao({ modulo, atualizarConfig }) {
             ))}
           </div>
         </div>
+      </details>
+
+      <details className="mb-3 rounded border border-gray-200 p-2">
+        <summary className="cursor-pointer text-sm font-medium text-gray-700">
+          Lista de peças: {planoFita.pecas.length}
+        </summary>
+        <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-gray-600">
+          {planoFita.pecas.map((peca) => {
+            const [comprimento, larguraCorte] = medidasDeCorte(peca);
+            return (
+              <li key={peca.id}>
+                {peca.nome}: {comprimento} × {larguraCorte} mm · esp. {peca.espessura || "-"} mm
+                {peca.chapaId ? "" : " · sem chapa"}
+              </li>
+            );
+          })}
+        </ul>
       </details>
 
       <details className="rounded border border-gray-200 p-2">
@@ -257,13 +377,19 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
   const atualizarInterno = useModuloStore((state) => state.atualizarInterno);
   const removerDivisao = useModuloStore((state) => state.removerDivisao);
   const removerInterno = useModuloStore((state) => state.removerInterno);
-  const { adicionarPorta, removerPorta, vaoTemPorta } = useModuloStore();
+  const { adicionarPorta, removerPorta, atualizarPorta, vaoTemPorta } = useModuloStore();
   const divisoes = useModuloStore((state) => state.modulo.estrutura.divisoes);
   const internos = useModuloStore((state) => state.modulo.estrutura.internos);
   const portas = useModuloStore((state) => state.modulo.estrutura.portas);
   const casco = useModuloStore((state) => state.modulo.estrutura.casco);
   const dimensoes = useModuloStore((state) => state.modulo.dimensoes);
   const setPreviaDivisao = useModuloStore((state) => state.setPreviaDivisao);
+  const atualizarDivisao = useModuloStore((state) => state.atualizarDivisao);
+  const [chapas, setChapas] = useState([]);
+
+  useEffect(() => {
+    api.listarChapas().then(setChapas).catch(() => setChapas([]));
+  }, []);
   const vaoTemDivisao = (vaoId) =>
     divisoes.some((divisao) => (divisao.vao_pai || "raiz") === vaoId);
   const internosDoVao = internos.filter((i) => i.vao_id === vaoSelecionado);
@@ -514,11 +640,25 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
           <p className="text-xs font-medium text-gray-500 mt-3 mb-1">Divisões</p>
           <ul className="space-y-1">
             {divisoes.map((d) => (
-              <li key={d.id} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
-                <span>{d.eixo} @ {d.posicao}mm</span>
-                <button onClick={() => removerDivisao(d.id)} className="text-red-500 hover:text-red-700">
-                  remover
-                </button>
+              <li key={d.id} className="text-xs bg-gray-50 rounded px-2 py-1">
+                <div className="flex items-center justify-between">
+                  <span>{d.eixo} @ {d.posicao}mm</span>
+                  <button onClick={() => removerDivisao(d.id)} className="text-red-500 hover:text-red-700">
+                    remover
+                  </button>
+                </div>
+                {/* Fase 5: chapa da divisória */}
+                <select
+                  value={d.chapaId || ""}
+                  onChange={(e) => atualizarDivisao(d.id, { chapaId: e.target.value || null })}
+                  className="mt-1 w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+                  aria-label={`Chapa da divisória ${d.id}`}
+                >
+                  <option value="">Herda a chapa do casco</option>
+                  {chapas.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome} · {c.espessura_mm} mm</option>
+                  ))}
+                </select>
               </li>
             ))}
           </ul>
@@ -592,6 +732,21 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
                     posicaoMm: Math.min(posicaoMm, Math.max(0, vao.altura - valor)),
                   })}
                 />
+                {/* Fase 5: chapa da prateleira */}
+                <label className="mb-1 block text-xs text-gray-600" htmlFor={`chapa-${prateleira.id}`}>
+                  Chapa da prateleira
+                </label>
+                <select
+                  id={`chapa-${prateleira.id}`}
+                  value={interno?.chapaId || ""}
+                  onChange={(e) => atualizarInterno(prateleira.id, { chapaId: e.target.value || null })}
+                  className="mb-2 w-full rounded border border-gray-300 px-1.5 py-1 text-xs"
+                >
+                  <option value="">Herda a chapa do casco</option>
+                  {chapas.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome} · {c.espessura_mm} mm</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={() => salvarEstrutura()}
@@ -611,13 +766,29 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
           <p className="text-xs font-medium text-gray-500 mt-3 mb-1">Internos</p>
           <ul className="space-y-1">
             {internos.map((i) => (
-              <li key={i.id} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
-                <span>
-                  {i.tipo === "gaveteiro" ? `Gaveteiro (${i.num_gavetas}x)` : "Prateleira"} — {i.vao_id}
-                </span>
-                <button onClick={() => removerInterno(i.id)} className="text-red-500 hover:text-red-700">
-                  remover
-                </button>
+              <li key={i.id} className="text-xs bg-gray-50 rounded px-2 py-1">
+                <div className="flex items-center justify-between">
+                  <span>
+                    {i.tipo === "gaveteiro" ? `Gaveteiro (${i.num_gavetas}x)` : "Prateleira"} — {i.vao_id}
+                  </span>
+                  <button onClick={() => removerInterno(i.id)} className="text-red-500 hover:text-red-700">
+                    remover
+                  </button>
+                </div>
+                {/* Fase 5: chapa do gaveteiro/prateleira (o gaveteiro usa para frente e corpo das gavetas) */}
+                {i.tipo === "gaveteiro" && (
+                  <select
+                    value={i.chapaId || ""}
+                    onChange={(e) => atualizarInterno(i.id, { chapaId: e.target.value || null })}
+                    className="mt-1 w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+                    aria-label={`Chapa do gaveteiro ${i.id}`}
+                  >
+                    <option value="">Herda a chapa do casco</option>
+                    {chapas.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nome} · {c.espessura_mm} mm</option>
+                    ))}
+                  </select>
+                )}
               </li>
             ))}
           </ul>
@@ -631,17 +802,315 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
             {portas
               .filter((porta) => !vaoSelecionado || porta.vaoId === vaoSelecionado)
               .map((porta) => (
-              <li key={porta.id} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
-                <span>{porta.tipo} — {porta.vaoId}</span>
-                <button onClick={() => removerPorta(porta.id)} className="text-red-500 hover:text-red-700">
-                  remover
-                </button>
+              <li key={porta.id} className="text-xs bg-gray-50 rounded px-2 py-1">
+                <div className="flex items-center justify-between">
+                  <span>{porta.tipo} — {porta.vaoId}</span>
+                  <button onClick={() => removerPorta(porta.id)} className="text-red-500 hover:text-red-700">
+                    remover
+                  </button>
+                </div>
+                {/* Fase 5: chapa da porta */}
+                <select
+                  value={porta.chapaId || ""}
+                  onChange={(e) => atualizarPorta(porta.id, { chapaId: e.target.value || null })}
+                  className="mt-1 w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+                  aria-label={`Chapa da porta ${porta.id}`}
+                >
+                  <option value="">Herda a chapa do casco</option>
+                  {chapas.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome} · {c.espessura_mm} mm</option>
+                  ))}
+                </select>
               </li>
               ))}
           </ul>
         </>
       )}
     </div>
+  );
+}
+
+const NOMES_ORIENTACAO = {
+  horizontal: "Horizontal (tampo, prateleira)",
+  vertical: "Vertical (lateral)",
+  frontal: "Frontal (painel, fundo)",
+};
+
+function PainelPecasAvulsas({ salvarEstrutura, salvando }) {
+  const pecas = useModuloStore((state) => state.modulo.estrutura.pecas) || [];
+  const dimensoes = useModuloStore((state) => state.modulo.dimensoes);
+  const selecionadaId = useModuloStore((state) => state.pecaAvulsaSelecionada);
+  const setSelecionada = useModuloStore((state) => state.setPecaAvulsaSelecionada);
+  const adicionarPeca = useModuloStore((state) => state.adicionarPecaAvulsa);
+  const atualizarPeca = useModuloStore((state) => state.atualizarPecaAvulsa);
+  const duplicarPeca = useModuloStore((state) => state.duplicarPecaAvulsa);
+  const removerPeca = useModuloStore((state) => state.removerPecaAvulsa);
+  const [chapas, setChapas] = useState([]);
+  const secaoRef = useRef(null);
+
+  useEffect(() => {
+    api.listarChapas().then(setChapas).catch(() => setChapas([]));
+  }, []);
+
+  // ao clicar numa peça no 3D, o painel rola até o formulário dela
+  useEffect(() => {
+    if (selecionadaId && secaoRef.current && secaoRef.current.scrollIntoView) {
+      secaoRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selecionadaId]);
+
+  useEffect(() => {
+    function excluirPecaSelecionada(evento) {
+      const elementoAtivo = document.activeElement;
+      const editandoCampo =
+        elementoAtivo instanceof HTMLElement &&
+        (elementoAtivo.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(elementoAtivo.tagName));
+
+      if (evento.key !== "Delete" || !selecionadaId || editandoCampo) return;
+
+      evento.preventDefault();
+      removerPeca(selecionadaId);
+    }
+
+    window.addEventListener("keydown", excluirPecaSelecionada);
+    return () => window.removeEventListener("keydown", excluirPecaSelecionada);
+  }, [selecionadaId, removerPeca]);
+
+  const peca = pecas.find((item) => item.id === selecionadaId) || null;
+  const geo = peca ? geometriaPecaAvulsa(peca, dimensoes) : null;
+  const rotulos = ORIENTACOES_PECA[geo?.orientacao || "horizontal"];
+
+  // o maior valor possível de cada medida é o tamanho do módulo naquele sentido
+  const limitePorOrientacao = {
+    horizontal: [dimensoes.largura, dimensoes.profundidade],
+    vertical: [dimensoes.profundidade, dimensoes.altura],
+    frontal: [dimensoes.largura, dimensoes.altura],
+  };
+  const [maxA, maxB] = limitePorOrientacao[geo?.orientacao || "horizontal"];
+
+  const atualizar = (campos) => atualizarPeca(peca.id, campos);
+
+  return (
+    <section ref={secaoRef} className="mt-4 border-t border-gray-200 pt-4">
+      <h3 className="mb-2 font-semibold text-gray-700">Peças avulsas ({pecas.length})</h3>
+      <p className="mb-2 text-xs text-gray-500">
+        Cadastre peças próprias (rodapé, tampo extra, ripado, painel). Elas entram na lista de peças,
+        na fita de borda e aparecem no 3D. Clique numa peça no 3D para editá-la; com ela selecionada,
+        pressione Delete para excluí-la.
+      </p>
+
+      {pecas.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {pecas.map((item) => {
+            const g = geometriaPecaAvulsa(item, dimensoes);
+            const ativa = item.id === selecionadaId;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelecionada(ativa ? null : item.id)}
+                  className={`w-full rounded border px-2 py-1 text-left text-xs ${
+                    ativa
+                      ? "border-amber-500 bg-amber-50 text-amber-900"
+                      : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <strong>{g.nome}</strong> · {g.medidaA} × {g.medidaB} mm · esp. {g.espessura} mm
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <button
+        type="button"
+        onClick={() => adicionarPeca()}
+        className="mb-3 w-full rounded bg-amber-600 py-1.5 text-sm text-white hover:bg-amber-700"
+      >
+        + Nova peça
+      </button>
+
+      {peca && geo && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-2">
+          <label className="mb-1 block text-xs text-gray-600">Nome da peça</label>
+          <input
+            type="text"
+            value={peca.nome ?? ""}
+            onChange={(evento) => atualizar({ nome: evento.target.value })}
+            className="mb-3 w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+
+          <label className="mb-1 block text-xs text-gray-600">Como a peça fica no móvel</label>
+          <div className="mb-3 flex flex-col gap-1">
+            {Object.keys(NOMES_ORIENTACAO).map((chave) => (
+              <button
+                key={chave}
+                type="button"
+                onClick={() => atualizar({ orientacao: chave })}
+                className={`rounded border px-2 py-1 text-left text-xs ${
+                  geo.orientacao === chave
+                    ? "border-amber-600 bg-amber-600 text-white"
+                    : "border-gray-300 bg-white text-gray-700"
+                }`}
+              >
+                {NOMES_ORIENTACAO[chave]}
+              </button>
+            ))}
+          </div>
+
+          <CampoDeslizante
+            label={rotulos.rotuloA}
+            valor={geo.medidaA}
+            min={10}
+            max={Math.max(10, maxA)}
+            onChange={(valor) => atualizar({ medidaA: valor })}
+          />
+          <CampoDeslizante
+            label={rotulos.rotuloB}
+            valor={geo.medidaB}
+            min={10}
+            max={Math.max(10, maxB)}
+            onChange={(valor) => atualizar({ medidaB: valor })}
+          />
+          <CampoDeslizante
+            label="Espessura"
+            valor={geo.espessura}
+            min={3}
+            max={50}
+            onChange={(valor) => atualizar({ espessura: valor })}
+          />
+
+          <p className="mb-1 mt-2 text-xs font-medium text-gray-700">Posição no módulo</p>
+          <CampoDeslizante
+            label="A partir da esquerda"
+            valor={Math.round(geo.x)}
+            min={0}
+            max={Math.max(0, dimensoes.largura - geo.largura)}
+            onChange={(valor) => atualizar({ x: valor })}
+          />
+          <CampoDeslizante
+            label="A partir da base"
+            valor={Math.round(geo.y)}
+            min={0}
+            max={Math.max(0, dimensoes.altura - geo.altura)}
+            onChange={(valor) => atualizar({ y: valor })}
+          />
+          <CampoDeslizante
+            label="A partir do fundo"
+            valor={Math.round(geo.z)}
+            min={0}
+            max={Math.max(0, dimensoes.profundidade - geo.profundidade)}
+            onChange={(valor) => atualizar({ z: valor })}
+          />
+          <div className="mb-3 flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => atualizar({ x: Math.max(0, Math.round((dimensoes.largura - geo.largura) / 2)) })}
+              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            >
+              Centralizar na largura
+            </button>
+            <button
+              type="button"
+              onClick={() => atualizar({ z: 0 })}
+              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            >
+              Encostar no fundo
+            </button>
+            <button
+              type="button"
+              onClick={() => atualizar({ y: 0 })}
+              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            >
+              Apoiar na base
+            </button>
+          </div>
+
+          <label className="mb-1 block text-xs text-gray-600">Chapa MDF</label>
+          <select
+            value={peca.chapaId || ""}
+            onChange={(evento) => atualizar({ chapaId: evento.target.value || null })}
+            className="mb-3 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">Usar a chapa do casco</option>
+            {chapas.map((chapa) => (
+              <option key={chapa.id} value={chapa.id}>
+                {chapa.nome} · {chapa.espessura_mm} mm
+              </option>
+            ))}
+          </select>
+
+          <p className="mb-1 text-xs font-medium text-gray-700">Fita de borda</p>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs text-gray-600">Bordas de {geo.medidaA} mm</label>
+              <select
+                value={geo.fitaA}
+                onChange={(evento) => atualizar({ fitaA: Number(evento.target.value) })}
+                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+              >
+                <option value={0}>Nenhuma</option>
+                <option value={1}>1 lado</option>
+                <option value={2}>2 lados</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-600">Bordas de {geo.medidaB} mm</label>
+              <select
+                value={geo.fitaB}
+                onChange={(evento) => atualizar({ fitaB: Number(evento.target.value) })}
+                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+              >
+                <option value={0}>Nenhuma</option>
+                <option value={1}>1 lado</option>
+                <option value={2}>2 lados</option>
+              </select>
+            </div>
+          </div>
+          <label className="mb-1 block text-xs text-gray-600">Tipo de fita</label>
+          <select
+            value={geo.grupoFita}
+            onChange={(evento) => atualizar({ grupoFita: evento.target.value })}
+            className="mb-3 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="padrao">Padrão (casco e divisórias)</option>
+            <option value="frentes">Frentes (portas e gavetas)</option>
+          </select>
+
+          <p className="mb-2 text-xs text-gray-600">
+            Medida de corte: {Math.max(geo.medidaA, geo.medidaB)} × {Math.min(geo.medidaA, geo.medidaB)} mm,
+            espessura {geo.espessura} mm.
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => salvarEstrutura("Peça salva no projeto.")}
+              disabled={salvando}
+              className="flex-1 rounded border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+            >
+              {salvando ? "Salvando..." : "Salvar peça"}
+            </button>
+            <button
+              type="button"
+              onClick={() => duplicarPeca(peca.id)}
+              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            >
+              Duplicar
+            </button>
+            <button
+              type="button"
+              onClick={() => removerPeca(peca.id)}
+              className="rounded border border-red-200 bg-white px-2 py-1 text-xs text-red-600"
+            >
+              Excluir peça
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -655,7 +1124,7 @@ function FerragensVinculadas({ modulo, atualizarFerragem }) {
       .catch((erroRequisicao) => setErro(erroRequisicao.message));
   }, []);
 
-  const vaos = gerarVaos(modulo.dimensoes, modulo.estrutura.divisoes);
+  const vaos = gerarVaos(modulo.dimensoes, modulo.estrutura.divisoes, modulo.estrutura.casco);
   const necessidades = calcularFerragensModulo(
     modulo.estrutura,
     modulo.dimensoes.profundidade,
@@ -725,6 +1194,7 @@ export default function EditorModulo({ projetoId, moduloId }) {
   const payloadParaApi = useModuloStore((state) => state.payloadParaApi);
   const atualizarFerragem = useModuloStore((state) => state.atualizarFerragemVinculada);
   const atualizarCasco = useModuloStore((state) => state.atualizarCasco);
+  const atualizarAparencia = useModuloStore((state) => state.atualizarAparencia);
   const atualizarConfigFabricacao = useModuloStore((state) => state.atualizarConfigFabricacao);
   const history = useHistory();
   const location = useLocation();
@@ -738,6 +1208,7 @@ export default function EditorModulo({ projetoId, moduloId }) {
   const [nomeModelo, setNomeModelo] = useState("");
   const [categoriaModelo, setCategoriaModelo] = useState("painel_tv");
   const [salvandoModelo, setSalvandoModelo] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState("estrutura");
 
   useEffect(() => {
     setProjetoId(projetoId);
@@ -754,7 +1225,7 @@ export default function EditorModulo({ projetoId, moduloId }) {
   },   [projetoId, moduloId, carregarModulo, setProjetoId, resetarModulo]); // eslint-disable-line
 
 
-  
+
   async function salvarEstrutura(mensagemSucesso = "Estrutura salva no projeto.") {
     setSalvando(true);
     setMensagem(null);
@@ -809,48 +1280,95 @@ export default function EditorModulo({ projetoId, moduloId }) {
 
   if (carregando) return <p className="p-4">Carregando móvel...</p>;
 
+  const ABAS = [
+    { id: "estrutura", rotulo: "Estrutura" },
+    { id: "internos", rotulo: "Internos" },
+    { id: "portas", rotulo: "Portas" },
+    { id: "aparencia", rotulo: "Aparência" },
+    { id: "resumo", rotulo: "Resumo" },
+  ];
+
   return (
-    <div className="flex h-[700px] gap-4 p-4">
-      <div className="w-72 bg-white rounded-lg shadow p-4 flex flex-col overflow-y-auto">
+    <div className="flex h-[calc(100vh-64px)] gap-4 p-4">
+      <div className="w-72 bg-white rounded-card border border-app-borda shadow-card p-4 flex flex-col overflow-y-auto">
         <button
           type="button"
           onClick={() => projetoId ? history.push(`/projetos/${projetoId}`) : history.goBack()}
-          className="mb-4 self-start text-sm font-medium text-blue-700 hover:text-blue-900"
+          className="mb-4 self-start text-sm font-medium text-primario hover:text-primario-escuro"
         >
           &larr; Voltar ao projeto
         </button>
-        <label className="block text-sm font-medium text-gray-600 mb-1">Nome do móvel</label>
+        <label className="block text-sm font-medium text-app-secundario mb-1">Nome do móvel</label>
         <input
           type="text"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          className="w-full border border-gray-300 rounded px-2 py-1 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className={`w-full ${classeInput} mb-4`}
         />
 
-        <h3 className="font-semibold text-gray-700 mb-2">Dimensões</h3>
-        <CampoDimensao label="Largura" chave="largura" />
-        <CampoDimensao label="Altura" chave="altura" />
-        <CampoDimensao label="Profundidade" chave="profundidade" />
+        {/* abas (Fase 7) */}
+        <div className="mb-3 flex flex-wrap gap-1 border-b border-app-borda">
+          {ABAS.map(({ id, rotulo }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setAbaAtiva(id)}
+              aria-current={abaAtiva === id ? "page" : undefined}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-t-lg transition-colors ${
+                abaAtiva === id
+                  ? "border-b-2 border-primario text-primario"
+                  : "text-app-secundario hover:text-app-texto"
+              }`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
 
-        <PainelCasco
-          casco={modulo.estrutura.casco}
-          atualizarCasco={atualizarCasco}
-          salvar={salvarEstrutura}
-          salvando={salvando}
-        />
+        {abaAtiva === "estrutura" && (
+          <>
+            <h3 className="font-semibold text-gray-700 mb-2">Dimensões</h3>
+            <CampoDimensao label="Largura" chave="largura" />
+            <CampoDimensao label="Altura" chave="altura" />
+            <CampoDimensao label="Profundidade" chave="profundidade" />
 
-        <PainelVaoSelecionado
-          vaoSelecionado={vaoSelecionado}
-          salvarEstrutura={salvarEstrutura}
-          salvando={salvando}
-        />
-        <FerragensVinculadas modulo={modulo} atualizarFerragem={atualizarFerragem} />
-        <PainelFabricacao modulo={modulo} atualizarConfig={atualizarConfigFabricacao} />
+            <PainelCasco
+              casco={modulo.estrutura.casco}
+              atualizarCasco={atualizarCasco}
+              salvar={salvarEstrutura}
+              salvando={salvando}
+            />
+
+            <PainelVaoSelecionado
+              vaoSelecionado={vaoSelecionado}
+              salvarEstrutura={salvarEstrutura}
+              salvando={salvando}
+            />
+          </>
+        )}
+
+        {abaAtiva === "internos" && (
+          <>
+            <PainelPecasAvulsas salvarEstrutura={salvarEstrutura} salvando={salvando} />
+          </>
+        )}
+
+        {abaAtiva === "portas" && (
+          <FerragensVinculadas modulo={modulo} atualizarFerragem={atualizarFerragem} />
+        )}
+
+        {abaAtiva === "aparencia" && (
+          <PainelAparencia modulo={modulo} atualizarCasco={atualizarCasco} atualizarAparencia={atualizarAparencia} />
+        )}
+
+        {abaAtiva === "resumo" && (
+          <PainelFabricacao modulo={modulo} atualizarConfig={atualizarConfigFabricacao} />
+        )}
 
         <button
           onClick={handleSalvar}
           disabled={salvando}
-          className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded py-2 font-medium"
+          className="mt-4 bg-primario hover:bg-primario-escuro disabled:bg-primario-claro text-white rounded-lg py-2 font-medium"
         >
           {salvando ? "Salvando..." : "Salvar móvel"}
         </button>
@@ -858,7 +1376,7 @@ export default function EditorModulo({ projetoId, moduloId }) {
         <button
           type="button"
           onClick={() => setMostrarSalvarModelo((prev) => !prev)}
-          className="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded py-2 font-medium"
+          className="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-2 font-medium"
         >
           {mostrarSalvarModelo ? "Fechar" : "Salvar na biblioteca"}
         </button>
@@ -907,8 +1425,73 @@ export default function EditorModulo({ projetoId, moduloId }) {
       </div>
 
       <div className="flex-1">
+        <SeletorCenario projetoId={projetoId} />
         <Cena vaoSelecionado={vaoSelecionado} onSelecionarVao={setVaoSelecionado} />
       </div>
     </div>
+  );
+}
+// Aba Aparência (Fase 7): cor e veio do módulo + chapa do casco.
+// A cor/veio por peça vem da chapa (Fase 5); aqui fica o padrão do módulo.
+function PainelAparencia({ modulo, atualizarCasco, atualizarAparencia }) {
+  const [chapas, setChapas] = useState([]);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    api.listarChapas()
+      .then(setChapas)
+      .catch((e) => setErro(e.message));
+  }, []);
+
+  const casco = modulo.estrutura.casco;
+  const chapaDoCasco = chapas.find((c) => c.id === casco.chapaId);
+
+  return (
+    <section>
+      <h3 className="mb-2 font-semibold text-gray-700">Chapa do casco</h3>
+      <select
+        value={casco.chapaId || ""}
+        onChange={(evento) => atualizarCasco("chapaId", evento.target.value || null)}
+        className={`w-full ${classeInput}`}
+      >
+        <option value="">Sem chapa (usa a cor do módulo)</option>
+        {chapas.map((chapa) => (
+          <option key={chapa.id} value={chapa.id}>
+            {chapa.nome} · {chapa.espessura_mm} mm
+          </option>
+        ))}
+      </select>
+
+      {chapaDoCasco?.cor && (
+        <div className="mt-3 rounded-lg border border-app-borda p-3">
+          <div className="flex items-center gap-3">
+            <span
+              className="h-10 w-10 rounded border border-app-borda"
+              style={{ backgroundColor: chapaDoCasco.cor }}
+              aria-hidden="true"
+            />
+            <div>
+              <p className="text-sm font-medium text-app-texto">{chapaDoCasco.nome}</p>
+              <p className="text-xs text-app-secundario">
+                Cor <code>{chapaDoCasco.cor}</code> · veio derivado (~20% mais escuro)
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <h3 className="mb-2 mt-4 font-semibold text-gray-700">Cor de fallback do módulo</h3>
+      <p className="mb-2 text-xs text-app-secundario">
+        Usada só nas peças sem chapa vinculada.
+      </p>
+      <input
+        type="color"
+        value={modulo.aparencia.cor || "#e8e4d8"}
+        onChange={(evento) => atualizarAparencia("cor", evento.target.value)}
+        className="h-9 w-14 cursor-pointer rounded border border-app-borda bg-white p-1"
+        aria-label="Cor do módulo"
+      />
+      {erro && <p role="alert" className="mt-2 text-sm text-red-700">{erro}</p>}
+    </section>
   );
 }

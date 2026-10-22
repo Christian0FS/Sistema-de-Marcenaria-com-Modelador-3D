@@ -25,6 +25,7 @@ function normalizarEstrutura(e = {}) {
         divisoes: e.divisoes ?? e["divisões"] ?? [],
         internos: e.internos ?? [],
         portas: e.portas ?? [],
+        pecas: e.pecas ?? [], // peças avulsas cadastradas pelo criador
         casco: {
             espessura: e.casco?.espessura ?? 15,
             incluirFundo: e.casco?.incluirFundo ?? true,
@@ -50,6 +51,7 @@ const moduloInicial = () => ({
         divisoes: [],
         internos: [],
         portas: [],
+        pecas: [],
         casco: { espessura: 15, incluirFundo: true, espessuraFundo: 6, chapaId: null },
         fabricacao: FABRICACAO_INICIAL,
     },
@@ -60,19 +62,13 @@ export const useModuloStore = create((set, get) => ({
     projetoId: null,
     previaDivisao: null,
     setPreviaDivisao: (previaDivisao) => set({ previaDivisao }),
-    modulo: {
-        modulo_id: null,
-        nome: "Novo Móvel",
-        dimensoes: { largura: 1500, altura: 700, profundidade: 600 },
-        estrutura: {
-            divisoes: [],
-            internos: [],
-            portas: [],
-            casco: { espessura: 15, incluirFundo: true, espessuraFundo: 6, chapaId: null },
-            fabricacao: FABRICACAO_INICIAL,
-        },
-        aparencia: { cor: "#e8e4d8", orientacao_fibra: "horizontal" },
-    },
+    pecaAvulsaSelecionada: null,
+    setPecaAvulsaSelecionada: (pecaAvulsaSelecionada) => set({ pecaAvulsaSelecionada }),
+    // o que aparece no 3D além das peças: furos e ferragens (desligados por padrão)
+    visualizacao: { furos: false, ferragens: false, ampliar: true },
+    setVisualizacao: (chave, valor) =>
+        set((state) => ({ visualizacao: { ...state.visualizacao, [chave]: valor } })),
+    modulo: moduloInicial(),
     salvando: false,
     ultimoSalvamento: null,
     erroSalvamento: null,
@@ -97,6 +93,15 @@ export const useModuloStore = create((set, get) => ({
             },
         })),
 
+    // Fase 7 (aba Aparência): cor/veio de fallback do módulo
+    atualizarAparencia: (chave, valor) =>
+        set((state) => ({
+            modulo: {
+                ...state.modulo,
+                aparencia: { ...state.modulo.aparencia, [chave]: valor },
+            },
+        })),
+
     atualizarConfigFabricacao: (secao, chave, valor) =>
         set((state) => ({
             modulo: {
@@ -114,7 +119,96 @@ export const useModuloStore = create((set, get) => ({
             },
         })),
 
-    resetarModulo: () => set({ modulo: moduloInicial(), previaDivisao: null }),
+    resetarModulo: () =>
+        set({ modulo: moduloInicial(), previaDivisao: null, pecaAvulsaSelecionada: null }),
+
+    // ---- peças avulsas (cadastro de peças do criador) ----
+    adicionarPecaAvulsa: (campos = {}) => {
+        const id = `peca-${idCurto()}`;
+        set((state) => {
+            const { dimensoes, estrutura } = state.modulo;
+            const quantidade = (estrutura.pecas || []).length;
+            const medidaA = Number(campos.medidaA) || 400;
+            const medidaB = Number(campos.medidaB) || 300;
+            const nova = {
+                id,
+                nome: `Peça ${quantidade + 1}`,
+                orientacao: "horizontal",
+                medidaA,
+                medidaB,
+                espessura: 15,
+                x: Math.max(0, Math.round((dimensoes.largura - medidaA) / 2)),
+                y: Math.round(dimensoes.altura / 2),
+                z: Math.max(0, Math.round((dimensoes.profundidade - medidaB) / 2)),
+                chapaId: null,
+                fitaA: 1,
+                fitaB: 0,
+                grupoFita: "padrao",
+                ...campos,
+            };
+            return {
+                modulo: {
+                    ...state.modulo,
+                    estrutura: { ...estrutura, pecas: [...(estrutura.pecas || []), nova] },
+                },
+                pecaAvulsaSelecionada: id,
+            };
+        });
+        return id;
+    },
+
+    atualizarPecaAvulsa: (pecaId, campos) =>
+        set((state) => ({
+            modulo: {
+                ...state.modulo,
+                estrutura: {
+                    ...state.modulo.estrutura,
+                    pecas: (state.modulo.estrutura.pecas || []).map((peca) =>
+                        peca.id === pecaId ? { ...peca, ...campos } : peca
+                    ),
+                },
+            },
+        })),
+
+    duplicarPecaAvulsa: (pecaId) => {
+        const novoId = `peca-${idCurto()}`;
+        set((state) => {
+            const original = (state.modulo.estrutura.pecas || []).find((peca) => peca.id === pecaId);
+            if (!original) return {};
+            const copia = {
+                ...original,
+                id: novoId,
+                nome: `${original.nome} (cópia)`,
+                // desloca a cópia para não ficar escondida atrás da original
+                x: (Number(original.x) || 0) + 20,
+                y: (Number(original.y) || 0) + 20,
+            };
+            return {
+                modulo: {
+                    ...state.modulo,
+                    estrutura: {
+                        ...state.modulo.estrutura,
+                        pecas: [...state.modulo.estrutura.pecas, copia],
+                    },
+                },
+                pecaAvulsaSelecionada: novoId,
+            };
+        });
+        return novoId;
+    },
+
+    removerPecaAvulsa: (pecaId) =>
+        set((state) => ({
+            modulo: {
+                ...state.modulo,
+                estrutura: {
+                    ...state.modulo.estrutura,
+                    pecas: (state.modulo.estrutura.pecas || []).filter((peca) => peca.id !== pecaId),
+                },
+            },
+            pecaAvulsaSelecionada:
+                state.pecaAvulsaSelecionada === pecaId ? null : state.pecaAvulsaSelecionada,
+        })),
 
     carregarModulo: (dados, dimensoesNovas) =>
         set((state) => {
@@ -235,6 +329,20 @@ export const useModuloStore = create((set, get) => ({
             },
         })),
 
+    // Fase 5: chapa por divisória
+    atualizarDivisao: (divisaoId, campos) =>
+        set((state) => ({
+            modulo: {
+                ...state.modulo,
+                estrutura: {
+                    ...state.modulo.estrutura,
+                    divisoes: state.modulo.estrutura.divisoes.map((d) =>
+                        d.id === divisaoId ? { ...d, ...campos } : d
+                    ),
+                },
+            },
+        })),
+
     adicionarInterno: (vaoId, tipo, opcoes = {}) =>
         set((state) => {
             const novoInterno = {
@@ -324,6 +432,20 @@ export const useModuloStore = create((set, get) => ({
                 estrutura: {
                     ...state.modulo.estrutura,
                     portas: state.modulo.estrutura.portas.filter((p) => p.id !== portaId),
+                },
+            },
+        })),
+
+    // Fase 5: chapa da porta
+    atualizarPorta: (portaId, campos) =>
+        set((state) => ({
+            modulo: {
+                ...state.modulo,
+                estrutura: {
+                    ...state.modulo.estrutura,
+                    portas: state.modulo.estrutura.portas.map((p) =>
+                        p.id === portaId ? { ...p, ...campos } : p
+                    ),
                 },
             },
         })),

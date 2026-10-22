@@ -1,5 +1,3 @@
-
-
 const ESPESSURA_PAINEL_MM = 15;
 const FOLGA_GAVETA_MM = 3;
 
@@ -355,6 +353,7 @@ export function reescalarEstrutura(estrutura, dimensoesAntigas, dimensoesNovas) 
     };
 
     return {
+        ...estrutura, // preserva casco, fabricacao e pecas avulsas
         divisoes: (estrutura.divisoes ?? []).map((divisao) => ({
             ...divisao,
             posicao: divisao.posicao * (fatorPorEixo[divisao.eixo] ?? 1),
@@ -362,4 +361,72 @@ export function reescalarEstrutura(estrutura, dimensoesAntigas, dimensoesNovas) 
         internos: [...(estrutura.internos ?? [])],
         portas: [...(estrutura.portas ?? [])],
     };
+}
+
+/**
+ * Peças avulsas: peças que o criador cadastra à mão no módulo (rodapé, tampo extra, ripado...).
+ * O criador informa a ORIENTAÇÃO da peça e duas medidas (A e B) mais a espessura;
+ * a caixa 3D {largura, altura, profundidade} sai daí:
+ *   horizontal (tampo/prateleira): A = largura,      B = profundidade, espessura na altura
+ *   vertical   (lateral):          A = profundidade, B = altura,       espessura na largura
+ *   frontal    (painel/fundo):     A = largura,      B = altura,       espessura na profundidade
+ * x/y/z partem da esquerda / base / fundo do módulo (mesmo sistema dos vãos).
+ */
+export const ORIENTACOES_PECA = {
+    horizontal: { rotuloA: "Largura (esquerda-direita)", rotuloB: "Profundidade (frente-trás)" },
+    vertical: { rotuloA: "Profundidade (frente-trás)", rotuloB: "Altura" },
+    frontal: { rotuloA: "Largura (esquerda-direita)", rotuloB: "Altura" },
+};
+
+export function geometriaPecaAvulsa(peca, dimensoes) {
+    const orientacao = ORIENTACOES_PECA[peca.orientacao] ? peca.orientacao : "horizontal";
+    const espessura = clamp(Number(peca.espessura) || ESPESSURA_PAINEL_MM, 1, 100);
+    const medidaA = Math.max(1, Number(peca.medidaA) || 100);
+    const medidaB = Math.max(1, Number(peca.medidaB) || 100);
+
+    let largura;
+    let altura;
+    let profundidade;
+    if (orientacao === "horizontal") {
+        largura = medidaA;
+        altura = espessura;
+        profundidade = medidaB;
+    } else if (orientacao === "vertical") {
+        largura = espessura;
+        altura = medidaB;
+        profundidade = medidaA;
+    } else {
+        largura = medidaA;
+        altura = medidaB;
+        profundidade = espessura;
+    }
+
+    // a peça nunca sai do módulo
+    const limite = (total, tamanho) => (total == null ? Infinity : Math.max(0, total - tamanho));
+    const x = clamp(Number(peca.x) || 0, 0, limite(dimensoes?.largura, largura));
+    const y = clamp(Number(peca.y) || 0, 0, limite(dimensoes?.altura, altura));
+    const z = clamp(Number(peca.z) || 0, 0, limite(dimensoes?.profundidade, profundidade));
+
+    return {
+        id: peca.id,
+        nome: peca.nome || "Peça avulsa",
+        orientacao,
+        x,
+        y,
+        z,
+        largura,
+        altura,
+        profundidade,
+        espessura,
+        medidaA,
+        medidaB,
+        chapaId: peca.chapaId || null,
+        fitaA: clamp(Math.round(Number(peca.fitaA) || 0), 0, 2),
+        fitaB: clamp(Math.round(Number(peca.fitaB) || 0), 0, 2),
+        grupoFita: peca.grupoFita === "frentes" ? "frentes" : "padrao",
+    };
+}
+
+export function gerarPecasAvulsas(pecas = [], dimensoes) {
+    return (pecas || []).map((peca) => geometriaPecaAvulsa(peca, dimensoes));
 }

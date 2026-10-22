@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useHistory } from "react-router-dom";
 import { api } from "../lib/api";
 
@@ -10,6 +10,9 @@ export default function Login() {
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const desmontado = useRef(false);
+
+  useEffect(() => () => { desmontado.current = true; }, []);
 
   async function handleSubmit(evento) {
     evento.preventDefault();
@@ -24,9 +27,15 @@ export default function Login() {
       localStorage.setItem("nomeUsuario", sessao.nome || nome);
       history.replace("/");
     } catch (erroRequisicao) {
-      setErro(erroRequisicao.message || "Não foi possível entrar.");
+      if (!desmontado.current) {
+        setErro(erroRequisicao.message || "Não foi possível entrar.");
+      }
     } finally {
-      setEnviando(false);
+      // a navegação para / desmonta o componente antes do finally rodar;
+      // atualizar estado de componente desmontado é no-op + warning de leak
+      if (!desmontado.current) {
+        setEnviando(false);
+      }
     }
   }
 

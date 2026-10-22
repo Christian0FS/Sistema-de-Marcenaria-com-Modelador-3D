@@ -30,12 +30,29 @@ class _ResilientClient:
     def execute(self, stmt, args=None):
         try:
             return self._client.execute(stmt, args)
+        except KeyError as erro:
+            # libsql-client esconde o erro real de SQL num KeyError('result')
+            raise RuntimeError(
+                f"Erro SQL em '{stmt[:60]}...' (detalhe oculto pelo libsql-client; "
+                f"provavelmente coluna/objeto já existe): {erro}"
+            ) from erro
         except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
             with _client_lock:
                 if not self._client.closed:
                     self._client.close()
                 self._client = _create_client(self._database_url, self._auth_token)
             return self._client.execute(stmt, args)
+
+    def batch(self, stmts):
+        """Vários statements em uma requisição (usado pela migração)."""
+        try:
+            return self._client.batch(stmts)
+        except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
+            with _client_lock:
+                if not self._client.closed:
+                    self._client.close()
+                self._client = _create_client(self._database_url, self._auth_token)
+            return self._client.batch(stmts)
 
     def close(self):
         self._client.close()

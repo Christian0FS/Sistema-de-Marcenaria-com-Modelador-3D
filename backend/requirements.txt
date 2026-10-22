@@ -6,6 +6,7 @@ python-dotenv==1.0.1
 reportlab==4.1.0
 ezdxf==1.2.0
 qrcode==7.4.2
+pillow==10.4.0
 python-jose==3.3.0
 passlib[bcrypt]==1.7.4
 email-validator==2.1.0

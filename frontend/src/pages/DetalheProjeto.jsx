@@ -31,6 +31,28 @@ export default function DetalheProjeto() {
     };
   }, [projetoId, setProjetoId]);
 
+  const [moduloParaExcluir, setModuloParaExcluir] = useState(null);
+  const [excluindo, setExcluindo] = useState(false);
+
+  async function confirmarExclusaoModulo() {
+    if (!moduloParaExcluir) return;
+    setExcluindo(true);
+    setErro("");
+    try {
+      await api.excluirModulo(projetoId, moduloParaExcluir.modulo_id);
+      setProjeto((atual) => ({
+        ...atual,
+        modulos: (atual.modulos || []).filter((m) => m.modulo_id !== moduloParaExcluir.modulo_id),
+      }));
+      setModuloParaExcluir(null);
+    } catch (e) {
+      setErro(e.message || "Não foi possível excluir o módulo.");
+      setModuloParaExcluir(null);
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
   if (carregando) return <p className="p-4 text-sm text-gray-500">Carregando projeto...</p>;
 
   if (erro || !projeto) {
@@ -58,6 +80,27 @@ export default function DetalheProjeto() {
           className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
         >
           + Novo módulo
+        </button>
+        <button
+          type="button"
+          onClick={() => history.push(`/projetos/${projeto.id}/producao`)}
+          className="rounded border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50"
+        >
+          Plano de corte e orçamento
+        </button>
+        <button
+          type="button"
+          onClick={() => history.push(`/projetos/${projeto.id}/cena`)}
+          className="rounded border border-violet-700 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-50"
+        >
+          Ver em cenário
+        </button>
+        <button
+          type="button"
+          onClick={() => history.push(`/projetos/${projeto.id}/contrato`)}
+          className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+        >
+          Contrato e assinatura
         </button>
       </div>
       <div className="mb-4">
@@ -89,9 +132,46 @@ export default function DetalheProjeto() {
               >
                 Abrir
               </button>
+              <button
+                type="button"
+                onClick={() => setModuloParaExcluir(modulo)}
+                className="shrink-0 rounded border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Excluir
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {/* confirmação de exclusão de módulo (Fase 3) */}
+      {moduloParaExcluir && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-card bg-white p-6 shadow-flutuante">
+            <h2 className="text-lg font-semibold">Excluir móvel</h2>
+            <p className="mt-2 text-sm text-app-secundario">
+              Excluir <strong>{moduloParaExcluir.nome || "Móvel sem nome"}</strong>?
+              A peça sai do plano de corte e do orçamento. Esta ação não pode ser desfeita.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModuloParaExcluir(null)}
+                className="rounded-lg border border-app-borda bg-white px-4 py-2 text-sm font-medium text-app-texto hover:bg-app-fundo"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarExclusaoModulo}
+                disabled={excluindo}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {excluindo ? "Excluindo..." : "Excluir"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
