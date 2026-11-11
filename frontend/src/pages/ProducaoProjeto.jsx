@@ -271,7 +271,9 @@ export default function ProducaoProjeto() {
     setBaixando(true);
     setErroDownload("");
     try {
-      const arquivo = await api.exportarProducao(projetoId, destino, dadosProducao);
+      const arquivo = await api.exportarProducao(projetoId, destino, dadosProducao, {
+        baseUrl: window.location.origin,
+      });
       const url = URL.createObjectURL(arquivo.blob);
       const link = document.createElement("a");
       link.href = url;

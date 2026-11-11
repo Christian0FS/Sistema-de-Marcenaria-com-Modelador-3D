@@ -144,8 +144,13 @@ export const api = {
             body: JSON.stringify(dados),
         }),
 
-    exportarProducao: (projetoId, destino, dados) =>
-        download(`/orcamento/${projetoId}/${destino}`, dados),
+    exportarProducao: (projetoId, destino, dados, query = null) =>
+        download(
+            `/orcamento/${projetoId}/${destino}${
+                query ? `?${new URLSearchParams(query).toString()}` : ""
+            }`,
+            dados
+        ),
 
     atualizarStatusProjeto: (id, status, cenario) =>
         request(`/projetos/${id}`, {
@@ -238,4 +243,13 @@ export const api = {
         }),
 
     listarOrcamentos: () => request("/orcamentos"),
+
+    // Fase 5.4: configurações do usuário (marcenaria, cenário padrão)
+    lerConfiguracoes: () => request("/configuracoes"),
+
+    salvarConfiguracoes: (dados) =>
+        request("/configuracoes", {
+            method: "PUT",
+            body: JSON.stringify(dados),
+        }),
 };

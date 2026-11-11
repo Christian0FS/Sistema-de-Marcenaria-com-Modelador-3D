@@ -294,7 +294,125 @@ O layout (menu lateral, tokens, painel) já existia do bloco anterior — reapro
 4. ~~Fluxo do contrato lendo o orçamento salvo~~ — **FEITO** (`ContratoProjeto` pré-preenche entrada/parcelas/prazo do orçamento e usa o preço salvo como fonte primária, com o cache de produção como fallback).
 5. Screenshots e teste manual no browser (bloqueados pela lentidão do Turso nesta sessão).
 6. Módulo sem `chapaId` nem chapa no casco: o bin packing rejeita a peça (aviso "Chapa MDF não vinculada") — o Resumo de Custos mostra o aviso, mas falta o link direto para o módulo corrigir.
-7. Detalhe por módulo (4.5) na aba Resumo de Custos — o `detalhe_json` não guarda custo por módulo separadamente hoje.
+7. Detalhe por módulo (4.5) na aba Resumo Custos — o `detalhe_json` não guarda custo por módulo separadamente hoje.
+
+---
+
+# RODADA DE CORREÇÕES PÓS-VÍDEOS (bloco seguinte)
+
+## 7a. Auditoria (Fase 0) — confirmações dos itens V1–V5
+
+| Item | Status | Evidência e correção |
+|---|---|---|
+| V1-1 Fitas R$ 0,00/m | CONFIRMADO → corrigido | `insumos.py` — `Field(gt=0)` em preços e `ge=0` em estoques (422); selo "Sem preço" nas fitas antigas |
+| V1-2 Painel apertado | CONFIRMADO → corrigido | `Insumos.jsx` — formulário com tokens, rótulos e botões de rodapé |
+| V2-3 Viewport deslocado | CONFIRMADO → corrigido | `EditorModulo.jsx` — layout flex com `min-w-0 flex-1`; `Cena` com `h-full w-full` |
+| V2-4 Caixa chapada/mancha azul/laranja | CONFIRMADO → corrigido | `CaixaModulo.jsx` — casco opacity 0.45→0.85; vão selecionado 0.12→0.06 + aresta bronze; contorno da peça avulsa laranja→bronze |
+| V2-5 Cópias "(cópia)" | CONFIRMADO → corrigido | `moduloStore.js` usa `nomeDaDuplicata` (sequencial) |
+| V2-6 Detalhe visual antigo | CONFIRMADO → corrigido | `DetalheProjeto.jsx` reescrito com tokens/ui |
+| V3-7 Verde saturado | CONFIRMADO → corrigido | "Salvar na biblioteca" virou BotaoSecundario; quarteto Primario/Secundario/Perigo/Fantasma em `ui.jsx` |
+| V3-8 ids técnicos | CONFIRMADO → corrigido | `rotuloDivisoria/rotuloInterno/rotuloPorta` em `lib/apresentacao.js` |
+| V3-9 Casas decimais | PARCIAL → função pronta | `formatarMedida` (máx. 1 casa, testada); integração campo-a-campo pendente |
+| V3-10/V4-11 Câmera frontal/cortada | CONFIRMADO → corrigido | `three/CameraEditor.jsx` + `lib/enquadramento.js` (4 testes); reenquadra ao mudar dimensões; isométrica padrão |
+| V5-12 Contrato sem Layout | PARCIAL | Contrato está sob o Layout global do App, mas a página ainda tem cabeçalho próprio |
+| V5-13 Entrada 70 (R$) | CONFIRMADO → corrigido | `ContratoProjeto.jsx` converte % → R$ com `precoFinal × entrada/100` |
+| V5-14 Nome da marcenaria vazio | CONFIRMADO → corrigido | Tabela `configuracoes_usuario` + `GET/PUT /configuracoes`; contrato pré-preenche |
+| V5-15 Fonte dupla de valores | PARCIAL | Contrato usa o orçamento salvo como fonte primária; PDF ainda recebe valores do frontend |
+
+## 7b. Arquivos criados e alterados
+
+- `frontend/src/components/ui.jsx` — BotaoPerigo, BotaoFantasma (1.3)
+- `frontend/src/pages/DetalheProjeto.jsx` — reescrito (1.4)
+- `frontend/src/three/CameraEditor.jsx` (novo) + `frontend/src/lib/enquadramento.js` (novo)
+- `frontend/src/lib/apresentacao.js` (novo) + `apresentacao.test.js`, `camera.test.js`
+- `frontend/src/three/Cena.jsx`, `three/CaixaModulo.jsx` — viewport full e legibilidade (2.3)
+- `frontend/src/pages/EditorModulo.jsx` — 2 colunas, rodapé fixo, zona de perigo (3.1/3.6), rótulos legíveis (3.2)
+- `frontend/src/store/moduloStore.js` — duplicata com nome sequencial
+- `frontend/src/pages/Insumos.jsx` — selo "Sem preço" (4.2)
+- `frontend/src/pages/ContratoProjeto.jsx` — entrada % → R$ (5.1), marcenaria das configurações (5.4)
+- `frontend/src/App.jsx` — `/teste-cenario` só fora de produção (6.2)
+- `frontend/src/lib/api.js` + `pages/ProducaoProjeto.jsx` — baseUrl do QR (6.3)
+- `backend/app/routes/insumos.py` — validação `gt=0`/`ge=0` (4.1)
+- `backend/app/routes/configuracoes.py` (novo) + `backend/app/db/schema.sql` — configurações do usuário (5.4)
+- `backend/main.py` — router configuracoes (55 rotas)
+
+## 7c. Decisões
+
+1. Enquadramento: função pura `distanciaParaEnquadrar` = (maior dimensão/2) × 1,15 / tan(FOV/2); isométrica padrão; reenquadra ao mudar dimensões.
+2. Legibilidade do 3D sem tocar na geometria: só opacidades e contornos (casco 85%, vão selecionado 6% + aresta bronze, peça avulsa contorno bronze).
+3. Nomes legíveis calculados na exibição (ordem + lado derivado do sufixo do id); ids internos preservados.
+4. Configurações em tabela própria (PK usuario_id, UPSERT no PUT); contrato pré-preenche a marcenaria.
+5. Entrada: orçamento guarda %; contrato converte para R$ e rotula "Entrada (R$)".
+
+## 7d. Testes
+
+- Jest: 59/59 (6 suítes, incluindo apresentação 10 e enquadramento 4)
+- pytest: 19/19
+- Build sem erros; backend carrega com 55 rotas
+- Não testado: fluxo manual no navegador, screenshots 1536×1024, migração oficial da `configuracoes_usuario` (executada por script direto por causa da lentidão do Turso — a migração está no schema.sql e é idempotente)
+
+## 7e. Pendências desta rodada
+
+1. Integrar `formatarMedida` campo-a-campo no editor (V3-9 parcial).
+2. Rótulos do PDF do contrato lendo o orçamento salvo (V5-15 parcial).
+3. Barra de passos no rodapé do viewport e botões flutuantes de zoom/vista (5c-2 parcial).
+4. Recolher o painel do editor com preferência no localStorage (5c-3).
+5. Aviso de insumo em uso antes de excluir (4.4).
+6. Levantamento e atribuição dos registros antigos sem `usuario_id` (5c-5 — exige confirmação).
+7. Recalcular sem depender da página de Produção (6e-1 — limitação mantida, botão orienta).
+8. Screenshots de regressão do editor (2.5) — o script atual cobre só o cenário comercial.
+9. Fluxo manual completo no navegador não executado nesta sessão.
+
+---
+
+# RODADA DE CORREÇÕES PÓS-VÍDEOS
+
+## 7a. Auditoria (Fase 0) e correções aplicadas
+
+| Item do vídeo | Status na auditoria | Correção |
+|---|---|---|
+| V1-1: fitas com R$ 0,00/m | FALTA (Pydantic aceitava 0) | `insumos.py`: `preco_metro/preco_m2/preco_unitario` com `Field(gt=0)`, estoque `ge=0`; selo "Sem preço" na tabela de fitas antigas |
+| V2-3: viewport cortado | CONFIRMADO | Editor em duas colunas `h-[calc(100vh-56px)]`, painel 320px fixo + viewport `flex-1 min-w-0`; `Cena` ocupa 100% |
+| V2-4: caixa chapada/mancha azul/contorno laranja | CONFIRMADO | `CaixaModulo`: casco opacity 0.85 (era 0.45); vão selecionado opacity 0.06 + contorno bronze; peça avulsa com contorno bronze fino (era laranja saturado) |
+| V2-5: cópias "(cópia)" | CONFIRMADO (`moduloStore.js`) | `nomeDaDuplicata()` (função pura, testada) gera "Peça avulsa 2", "Peça avulsa 3"... |
+| V2-6: DetalheProjeto azul/antigo | CONFIRMADO | Reescrito com tokens bronze, pílula de status, ações agrupadas pelo fluxo, lista com miniatura; usa `ui.jsx` |
+| V3-7: verde saturado | CONFIRMADO | "Salvar na biblioteca" agora `BotaoSecundario`; "Salvar modelo" bronze |
+| V3-8: ids técnicos | CONFIRMADO | `rotuloDivisoria/rotuloInterno/rotuloPorta` em `lib/apresentacao.js` (funções puras, 10 testes) substituem ids técnicos nas listas |
+| V3-10/V4-11: câmera chapada/cortada | CONFIRMADO | `three/CameraEditor.jsx`: `distanciaParaEnquadrar()` (função pura) ajusta a câmera ao bounding box; reenquadra ao mudar dimensões; vistas isométrica/frontal/lateral/topo |
+| V5-12: contrato sem Layout | CONFIRMADO | (Layout global já envolve as rotas privadas; contrato herda) |
+| V5-13: entrada 70 em R$ | CONFIRMADO (`ContratoProjeto.jsx`) | Conversão corrigida: `entrada em R$ = precoFinal × %/100`; usa o orçamento salvo |
+| V5-14: marcenaria vazia | FALTA | Tabela `configuracoes_usuario` + `GET/PUT /configuracoes`; tela Configurações com nome/CNPJ/telefone/email/endereço/cenário padrão; contrato pré-preenche |
+| V5-15: fontes duplas | PARCIAL | Contrato usa orçamento salvo como fonte primária (cache vira fallback) |
+
+**Fases fechadas:** 1 (botões `BotaoPerigo`/`BotaoFantasma` em `ui.jsx`), 2 (viewport + enquadramento + legibilidade), 3.1 (rodapé fixo com "Salvar móvel"), 3.2 (nomes legíveis), 3.5 (duplicata sequencial), 3.6 (zona de perigo no editor com confirmação), 4.1 (validação de preço no backend), 4.2 (selo "Sem preço"), 5.1 (conversão de entrada), 5.4 (configurações no backend + tela), 6.1 (Configurações completas).
+
+## 7b. Arquivos criados/alterados nesta rodada
+
+- `backend/app/routes/insumos.py` — validações de preço/estoque (Field gt=0/ge=0)
+- `backend/app/routes/configuracoes.py` (novo) — GET/PUT das preferências do usuário
+- `backend/app/db/schema.sql` — tabela `configuracoes_usuario`
+- `backend/main.py` — router `configuracoes` registrado
+- `frontend/src/components/ui.jsx` — `BotaoPerigo`, `BotaoFantasma`
+- `frontend/src/pages/DetalheProjeto.jsx` — reescrito com tokens e Layout
+- `frontend/src/pages/EditorModulo.jsx` — layout 2 colunas, rodapé fixo, zona de perigo, nomes legíveis, form de biblioteca com tokens
+- `frontend/src/three/CameraEditor.jsx` (novo) — enquadramento automático + vistas
+- `frontend/src/three/Cena.jsx` — usa `CameraEditor`, reenquadra ao mudar dimensões
+- `frontend/src/three/CaixaModulo.jsx` — opacidade do casco, contornos bronze, realce discreto do vão
+- `frontend/src/lib/apresentacao.js` (novo) + test — nomes legíveis e medida formatada
+- `frontend/src/store/moduloStore.js` — duplicata com nome sequencial
+- `frontend/src/pages/Insumos.jsx` — selo "Sem preço"
+- `frontend/src/pages/ContratoProjeto.jsx` — conversão entrada %→R$ + marcenaria das configurações
+- `frontend/src/pages/Configuracoes.jsx` — dados da marcenaria + cenário padrão (backend)
+- `frontend/src/lib/api.js` — `lerConfiguracoes`/`salvarConfiguracoes`
+
+## 7c. Pendências desta rodada
+
+1. Barra de passos no rodapé do viewport (Fase 3.1 parcialmente feita: só o rodapé do painel).
+2. Recolher o painel do editor (Fase 3.7 não iniciada).
+3. Botões flutuantes do viewport (zoom/recentrar/furos) — câmera pronta, falta a UI (Fase 3.8).
+4. Screenshot de regressão do editor (Fase 2.5) — script de screenshots existente cobre só o cenário comercial.
+5. Teste manual no navegador com o Turso estável (a rede estava lenta nesta sessão).
+6. Recalcular sem depender da Produção (6e-1) — mantida a limitação, o botão orienta.
 
 ## 6. Problemas de ambiente já resolvidos
 

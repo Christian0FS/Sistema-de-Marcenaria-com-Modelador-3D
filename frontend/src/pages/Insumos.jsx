@@ -398,7 +398,15 @@ export default function Insumos() {
               <tbody>
                 {fitas.map((fita) => (
                   <tr key={fita.id} className="border-b border-app-borda/60">
-                    <td className="px-4 py-2.5 font-medium text-app-texto">{fita.nome}</td>
+                    <td className="px-4 py-2.5 font-medium text-app-texto">
+                      {fita.nome}
+                      {/* V1-1/Fase 4.2: registros antigos com preço 0 ficam visíveis */}
+                      {(Number(fita.preco_metro) || 0) <= 0 && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                          Sem preço
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-app-secundario">{fita.cor || "—"}</td>
                     <td className="px-4 py-2.5 text-app-secundario">{formatarMoeda(fita.preco_metro)}/m</td>
                     <td className="px-4 py-2.5 text-app-secundario">{fita.estoque_metros} m</td>

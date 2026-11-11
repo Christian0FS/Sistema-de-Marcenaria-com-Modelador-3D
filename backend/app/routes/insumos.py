@@ -4,7 +4,7 @@ import uuid
 from typing import Optional 
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.connection import get_client
 from app.routes.auth import get_current_user
@@ -15,11 +15,11 @@ router = APIRouter()
 
 class ChapaInput(BaseModel):
     nome: str
-    espessura_mm: float
-    largura_mm: float
-    altura_mm: float
-    preco_m2: float
-    estoque_chapas: int = 0  # Estoque inicial de chapas
+    espessura_mm: float = Field(gt=0)
+    largura_mm: float = Field(gt=0)
+    altura_mm: float = Field(gt=0)
+    preco_m2: float = Field(gt=0)  # V1-1: preço zero/zsubestima o orçamento
+    estoque_chapas: int = Field(default=0, ge=0)
     cor: Optional[str] = None  # cor de acabamento da chapa (o veio é derivado no 3D)
 
 class ChapaUpdateInput(BaseModel):
@@ -109,8 +109,8 @@ def deletar_chapa(chapa_id: str, usuario_id: str = Depends(get_current_user)):
 class FitaInput(BaseModel):
     nome: str
     cor: Optional[str] = None
-    preco_metro: float
-    estoque_metros: float = 0
+    preco_metro: float = Field(gt=0)  # V1-1: preço zero subestima o orçamento
+    estoque_metros: float = Field(default=0, ge=0)
  
  
 class FitaUpdate(BaseModel):
@@ -206,8 +206,8 @@ TIPOS_FERRAGEM_VALIDOS = {"dobradica", "corredica", "puxador", "minifix", "cavil
 class FerragemInput(BaseModel):
     tipo: str
     nome: str
-    preco_unitario: float
-    estoque: int = 0
+    preco_unitario: float = Field(gt=0)  # V1-1: preço zero subestima o orçamento
+    estoque: int = Field(default=0, ge=0)
 
 
 class FerragemUpdate(BaseModel):

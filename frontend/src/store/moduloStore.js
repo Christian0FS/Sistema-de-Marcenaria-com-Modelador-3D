@@ -6,6 +6,7 @@ import {
     reescalarEstrutura,
 } from "../three/logicaEstrutura";
 import { DEFAULT_FURACAO_32 } from "../three/logicaFabricacao";
+import { nomeDaDuplicata } from "../lib/apresentacao";
 
 const FABRICACAO_INICIAL = {
     furacao32: { ...DEFAULT_FURACAO_32 },
@@ -178,8 +179,8 @@ export const useModuloStore = create((set, get) => ({
             const copia = {
                 ...original,
                 id: novoId,
-                nome: `${original.nome} (cópia)`,
-                // desloca a cópia para não ficar escondida atrás da original
+                // Fase 3.5: nome sequencial (sem "(cópia)"), desloca para não sobrepor
+                nome: nomeDaDuplicata(state.modulo.estrutura.pecas),
                 x: (Number(original.x) || 0) + 20,
                 y: (Number(original.y) || 0) + 20,
             };

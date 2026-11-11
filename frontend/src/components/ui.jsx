@@ -110,6 +110,32 @@ export function BotaoPrimario({ children, onClick, disabled, className = "", typ
   );
 }
 
+export function BotaoPerigo({ children, onClick, disabled, className = "" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-card transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500/60 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function BotaoFantasma({ children, onClick, disabled, className = "" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg px-3 py-1.5 text-sm font-medium text-app-secundario transition-colors hover:bg-app-fundo hover:text-app-texto focus:outline-none focus:ring-2 focus:ring-primario/40 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function BotaoSecundario({ children, onClick, disabled, className = "" }) {
   return (
     <button

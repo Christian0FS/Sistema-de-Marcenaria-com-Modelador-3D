@@ -94,22 +94,38 @@ export default function ContratoProjeto({ projetoId }) {
   });
   const [assinatura, setAssinatura] = useState(null);
 
-  // Fase 3.5: pré-preenche as condições com o orçamento salvo (se houver)
+  // V5-14: nome da marcenaria vem das configurações do usuário (backend)
+  api.lerConfiguracoes()
+    .then((config) => {
+      if (config?.nomeMarcenaria) {
+        setCampos((atual) => ({ ...atual, marcenaria: config.nomeMarcenaria }));
+      }
+    })
+    .catch(() => { /* sem configurações: campo fica vazio para digitar */ });
+
+  // Fase 3.5 + V5-14: pré-preenche as condições com o orçamento salvo e os
+  // dados da marcenaria com as configurações do usuário.
   useEffect(() => {
     let ativo = true;
-    api.orcamentoDoProjeto(projetoId)
-      .then((orc) => {
+    Promise.all([api.orcamentoDoProjeto(projetoId), api.lerConfiguracoes().catch(() => null)])
+      .then(([orc, config]) => {
         if (!ativo || !orc) return;
+        // V5-13: o orçamento guarda entrada em % (ex.: 70 = 70%). Converter para R$
+        // com o preço final do orçamento; se não houver %, mantém o valor atual.
+        const precoFinal = Number(orc.detalhe?.precoVenda) || Number(orc.precoVenda) || 0;
+        const entradaPercentual = Number(orc.entrada) || 0;
+        const entradaValor = precoFinal > 0 && entradaPercentual > 0 && entradaPercentual <= 100
+          ? precoFinal * (entradaPercentual / 100)
+          : 0;
         setCampos((atual) => ({
           ...atual,
-          entrada: orc.entrada != null && Number(orc.entrada) > 0
-            ? String(orc.entrada)
-            : atual.entrada,
+          marcenaria: config?.nomeMarcenaria || atual.marcenaria,
+          entrada: entradaValor > 0 ? entradaValor.toFixed(2) : atual.entrada,
           parcelas: orc.parcelas ? String(orc.parcelas) : atual.parcelas,
           prazo: orc.prazoEntregaDias ? `${orc.prazoEntregaDias} dias úteis` : atual.prazo,
         }));
       })
-      .catch(() => { /* sem orçamento salvo: usa os padrões */ });
+      .catch(() => { /* sem orçamento/configuração: usa os padrões */ });
     return () => { ativo = false; };
   }, [projetoId]);
 

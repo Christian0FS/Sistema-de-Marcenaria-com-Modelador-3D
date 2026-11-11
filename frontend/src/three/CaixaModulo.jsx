@@ -60,10 +60,18 @@ function VaoSelecionavel({ vao, profundidade, selecionado, onSelecionar, onSelec
       <meshStandardMaterial
         color={selecionado ? "#3b82f6" : "#ffffff"}
         transparent
-        opacity={selecionado ? 0.12 : 0.02}
+        // Fase 2.3: realce discreto do vão selecionado (antes 12% cobria tudo)
+        opacity={selecionado ? 0.06 : 0.02}
         depthWrite={false}
         side={THREE.DoubleSide}
       />
+      {/* borda bronze translúcida quando selecionado */}
+      {selecionado && (
+        <lineSegments renderOrder={11}>
+          <edgesGeometry args={[new THREE.BoxGeometry(...medidas(vao))]} />
+          <lineBasicMaterial color="#A9743F" transparent opacity={0.9} />
+        </lineSegments>
+      )}
     </mesh>
   );
 }
@@ -140,7 +148,8 @@ function PecaAvulsa({ peca, profundidade, textura, selecionada, onSelecionar }) 
       />
       {selecionada && (
         <lineSegments geometry={contorno} renderOrder={12}>
-          <lineBasicMaterial color="#b45309" depthTest={false} transparent />
+          {/* Fase 2.3: contorno fino bronze (antes laranja saturado) */}
+          <lineBasicMaterial color="#A9743F" depthTest={false} transparent opacity={0.85} />
         </lineSegments>
       )}
     </mesh>
@@ -347,12 +356,13 @@ export default function CaixaModulo({ vaoSelecionado, onSelecionarVao, modulo, s
       {pecasCorpo.map((peca) => (
         <mesh key={peca.id} position={peca.pos.map((v) => m(v))} castShadow receiveShadow>
           <boxGeometry args={peca.tam.map((v) => m(v))} />
+          {/* Fase 2.3: casco mais definido (antes 45% translúcido) */}
           <meshStandardMaterial
             map={textura}
             color="#ffffff"
             roughness={0.8}
             transparent
-            opacity={0.45}
+            opacity={0.85}
             depthWrite={false}
             side={THREE.DoubleSide}
           />

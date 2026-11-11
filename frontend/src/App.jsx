@@ -83,10 +83,12 @@ function App() {
         <Route exact path="/manual/:projetoId/:peca">
           <Suspense fallback={<CarregandoPagina />}><ManualMontagem /></Suspense>
         </Route>
-        {/* página de teste do cenário: sem login, para screenshots automatizados */}
-        <Route exact path="/teste-cenario">
-          <Suspense fallback={<CarregandoPagina />}><TesteCenario /></Suspense>
-        </Route>
+        {/* página de teste do cenário: sem login, só fora de produção (Fase 6.2) */}
+        {process.env.NODE_ENV !== "production" && (
+          <Route exact path="/teste-cenario">
+            <Suspense fallback={<CarregandoPagina />}><TesteCenario /></Suspense>
+          </Route>
+        )}
         <Route exact path="/login">
           <Suspense fallback={<CarregandoPagina />}><Login /></Suspense>
         </Route>

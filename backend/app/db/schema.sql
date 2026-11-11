@@ -77,6 +77,28 @@ CREATE TABLE IF NOT EXISTS ferragens (
   estoque INTEGER DEFAULT 0
 );
 
+-- Preferências por usuário (dados do contratado no contrato, cenário padrão).
+CREATE TABLE IF NOT EXISTS configuracoes_usuario (
+  usuario_id TEXT PRIMARY KEY,
+  nome_marcenaria TEXT,
+  cnpj TEXT,
+  telefone TEXT,
+  email TEXT,
+  endereco TEXT,
+  cenario_padrao TEXT DEFAULT 'neutro'
+);
+
+-- Preferências do usuário (Fase 5.4): dados do contratado no contrato, cenário padrão.
+CREATE TABLE IF NOT EXISTS configuracoes_usuario (
+  usuario_id TEXT PRIMARY KEY,
+  nome_marcenaria TEXT,
+  cnpj TEXT,
+  telefone TEXT,
+  email TEXT,
+  endereco TEXT,
+  cenario_padrao TEXT DEFAULT 'neutro'
+);
+
 CREATE TABLE IF NOT EXISTS biblioteca_modulos (
   id TEXT PRIMARY KEY,
   usuario_id TEXT NOT NULL,

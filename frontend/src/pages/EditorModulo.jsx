@@ -6,6 +6,7 @@ import { useHistory, useLocation } from "react-router-dom";
 import { CATEGORIAS } from "../lib/categoria";
 import SeletorCenario from "../components/SeletorCenario";
 import { classeInput } from "../components/ui";
+import { rotuloDivisoria, rotuloInterno, rotuloPorta } from "../lib/apresentacao";
 import {
   gerarPrateleiras,
   gerarVaos,
@@ -639,10 +640,11 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
         <>
           <p className="text-xs font-medium text-gray-500 mt-3 mb-1">Divisões</p>
           <ul className="space-y-1">
-            {divisoes.map((d) => (
+            {divisoes.map((d, indice) => (
               <li key={d.id} className="text-xs bg-gray-50 rounded px-2 py-1">
                 <div className="flex items-center justify-between">
-                  <span>{d.eixo} @ {d.posicao}mm</span>
+                  {/* Fase 3.2: rótulo legível, nunca o id */}
+                  <span>{rotuloDivisoria(d, indice)}</span>
                   <button onClick={() => removerDivisao(d.id)} className="text-red-500 hover:text-red-700">
                     remover
                   </button>
@@ -768,9 +770,8 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
             {internos.map((i) => (
               <li key={i.id} className="text-xs bg-gray-50 rounded px-2 py-1">
                 <div className="flex items-center justify-between">
-                  <span>
-                    {i.tipo === "gaveteiro" ? `Gaveteiro (${i.num_gavetas}x)` : "Prateleira"} — {i.vao_id}
-                  </span>
+                  {/* Fase 3.2: rótulo legível, nunca o id */}
+                  <span>{rotuloInterno(i, internos.indexOf(i))}</span>
                   <button onClick={() => removerInterno(i.id)} className="text-red-500 hover:text-red-700">
                     remover
                   </button>
@@ -804,7 +805,8 @@ function PainelVaoSelecionado({ vaoSelecionado, salvarEstrutura, salvando }) {
               .map((porta) => (
               <li key={porta.id} className="text-xs bg-gray-50 rounded px-2 py-1">
                 <div className="flex items-center justify-between">
-                  <span>{porta.tipo} — {porta.vaoId}</span>
+                  {/* Fase 3.2: rótulo legível, nunca o id */}
+                  <span>{rotuloPorta(porta, portas.indexOf(porta))}</span>
                   <button onClick={() => removerPorta(porta.id)} className="text-red-500 hover:text-red-700">
                     remover
                   </button>
@@ -1209,6 +1211,8 @@ export default function EditorModulo({ projetoId, moduloId }) {
   const [categoriaModelo, setCategoriaModelo] = useState("painel_tv");
   const [salvandoModelo, setSalvandoModelo] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState("estrutura");
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const [excluindoModulo, setExcluindoModulo] = useState(false);
 
   useEffect(() => {
     setProjetoId(projetoId);
@@ -1289,8 +1293,9 @@ export default function EditorModulo({ projetoId, moduloId }) {
   ];
 
   return (
-    <div className="flex h-[calc(100vh-64px)] gap-4 p-4">
-      <div className="w-72 bg-white rounded-card border border-app-borda shadow-card p-4 flex flex-col overflow-y-auto">
+    <div className="flex h-[calc(100vh-56px)] gap-3 p-3">
+      <div className="flex w-80 shrink-0 flex-col overflow-hidden rounded-card border border-app-borda bg-white shadow-card">
+        <div className="flex-1 overflow-y-auto p-4">
         <button
           type="button"
           onClick={() => projetoId ? history.push(`/projetos/${projetoId}`) : history.goBack()}
@@ -1366,39 +1371,31 @@ export default function EditorModulo({ projetoId, moduloId }) {
         )}
 
         <button
-          onClick={handleSalvar}
-          disabled={salvando}
-          className="mt-4 bg-primario hover:bg-primario-escuro disabled:bg-primario-claro text-white rounded-lg py-2 font-medium"
-        >
-          {salvando ? "Salvando..." : "Salvar móvel"}
-        </button>
-
-        <button
           type="button"
           onClick={() => setMostrarSalvarModelo((prev) => !prev)}
-          className="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-2 font-medium"
+          className="mt-4 w-full rounded-lg border border-app-borda bg-white px-4 py-2 text-sm font-medium text-app-texto hover:bg-app-fundo"
         >
           {mostrarSalvarModelo ? "Fechar" : "Salvar na biblioteca"}
         </button>
 
         {mostrarSalvarModelo && (
-          <div className="mt-3 border border-emerald-200 rounded bg-emerald-50 p-3 space-y-3">
+          <div className="mt-3 rounded-card border border-app-borda bg-app-fundo p-3 space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do modelo</label>
+              <label className="block text-sm font-medium text-app-texto mb-1">Nome do modelo</label>
               <input
                 type="text"
                 value={nomeModelo}
                 onChange={(e) => setNomeModelo(e.target.value)}
-                className="w-full border border-gray-300 rounded px-2 py-1"
+                className={`w-full ${classeInput}`}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+              <label className="block text-sm font-medium text-app-texto mb-1">Categoria</label>
               <select
                 value={categoriaModelo}
                 onChange={(e) => setCategoriaModelo(e.target.value)}
-                className="w-full border border-gray-300 rounded px-2 py-1"
+                className={`w-full ${classeInput}`}
               >
                 {CATEGORIAS.map((c) => (
                   <option key={c.valor} value={c.valor}>{c.label}</option>
@@ -1410,7 +1407,7 @@ export default function EditorModulo({ projetoId, moduloId }) {
               type="button"
               onClick={confirmarSalvarModelo}
               disabled={salvandoModelo || !nomeModelo.trim()}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded py-2"
+              className="w-full bg-primario hover:bg-primario-escuro disabled:opacity-50 text-white rounded-lg py-2 font-medium"
             >
               {salvandoModelo ? "Salvando..." : "Salvar modelo"}
             </button>
@@ -1418,16 +1415,81 @@ export default function EditorModulo({ projetoId, moduloId }) {
         )}
 
         {mensagem && (
-          <p className={`text-sm mt-2 ${mensagem.tipo === "erro" ? "text-red-600" : "text-green-600"}`}>
+          <p className={`text-sm mt-2 ${mensagem.tipo === "erro" ? "text-red-600" : "text-emerald-700"}`}>
             {mensagem.texto}
           </p>
         )}
+        </div>
+
+        {/* rodapé fixo do painel (Fase 3.1): salvar sempre visível */}
+        <div className="shrink-0 border-t border-app-borda p-3">
+          <button
+            onClick={handleSalvar}
+            disabled={salvando}
+            className="w-full bg-primario hover:bg-primario-escuro disabled:opacity-50 text-white rounded-lg py-2 font-medium"
+          >
+            {salvando ? "Salvando..." : "Salvar móvel"}
+          </button>
+
+          {/* Fase 3.6: zona de perigo — só para módulo já salvo (pendência 5c-1) */}
+          {modulo?.modulo_id && (
+            <button
+              type="button"
+              onClick={() => setConfirmarExclusao(true)}
+              className="mt-2 w-full rounded-lg border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              Excluir módulo
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1">
-        <SeletorCenario projetoId={projetoId} />
-        <Cena vaoSelecionado={vaoSelecionado} onSelecionarVao={setVaoSelecionado} />
-      </div>
+        <div className="flex-1 min-w-0 h-full flex flex-col">
+          <SeletorCenario projetoId={projetoId} />
+          <div className="min-h-0 flex-1">
+            <Cena vaoSelecionado={vaoSelecionado} onSelecionarVao={setVaoSelecionado} />
+          </div>
+        </div>
+
+      {/* Fase 3.6: confirmação de exclusão do módulo */}
+      {confirmarExclusao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-card bg-white p-6 shadow-flutuante">
+            <h2 className="text-lg font-semibold text-app-texto">Excluir módulo</h2>
+            <p className="mt-2 text-sm text-app-secundario">
+              Excluir <strong className="text-app-texto">{nome || "módulo sem nome"}</strong>? As peças saem do plano de corte e do orçamento. A ação não pode ser desfeita.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmarExclusao(false)}
+                className="rounded-lg border border-app-borda bg-white px-4 py-2 text-sm font-medium text-app-texto hover:bg-app-fundo"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setExcluindoModulo(true);
+                  try {
+                    await api.excluirModulo(projetoId, modulo.modulo_id);
+                    history.push(`/projetos/${projetoId}`);
+                  } catch (e) {
+                    setMensagem({ tipo: "erro", texto: e.message || "Falha ao excluir." });
+                    setConfirmarExclusao(false);
+                  } finally {
+                    setExcluindoModulo(false);
+                  }
+                }}
+                disabled={excluindoModulo}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {excluindoModulo ? "Excluindo..." : "Excluir"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
